@@ -157,14 +157,16 @@ class MainWindow(QMainWindow):
 
         def load():
             name = name_input.text().strip()
+            date = datetime.datetime.now().strftime("%d/%m/%Y")
 
+            print(name, date)
             if not name:
                 QMessageBox.warning(dialog, "Error", "Please fill all fields.")
                 return
 
             with sqlite3.connect("my_db.db") as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM users WHERE name=?", (name,))
+                cursor.execute("SELECT * FROM users WHERE name=? AND date=?", (name, date))
                 record = cursor.fetchone()
                 if record:
                     self.name.setText(record[1])
