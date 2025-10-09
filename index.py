@@ -7,6 +7,35 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QIcon
 import sys, datetime, sqlite3, os
 
+class AdminLogin(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Admin Login")
+        self.setFixedSize(300, 150)
+
+        layout = QFormLayout(self)
+
+        self.username_input = QLineEdit()
+        self.password_input = QLineEdit()
+        self.password_input.setEchoMode(QLineEdit.Password)
+
+        layout.addRow("Username:", self.username_input)
+        layout.addRow("Password:", self.password_input)
+
+        self.login_btn = QPushButton("Login")
+        self.login_btn.clicked.connect(self.check_credentials)
+
+        layout.addWidget(self.login_btn)
+
+    def check_credentials(self):
+        username = self.username_input.text().strip()
+        password = self.password_input.text().strip()
+
+        # Simple hardcoded login (customize this)
+        if username == "admin" and password == "1234":
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Error", "Invalid credentials.")
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -19,20 +48,31 @@ class MainWindow(QMainWindow):
         # --- Initialization ---
         self.create_database()  # Create SQLite DB if not exists
         self.initUI()           # Setup UI elements
-        self.initStyle()        # Apply custom stylesheet
+        self.set_dark_theme()       # Apply custom stylesheet
 
     # ------------------------------
     # Utility Functions
     # ------------------------------
-    def get_current_time(self):
+    def get_current_time(self, mode):
         """Set current system time into Time In field"""
         current_time = datetime.datetime.now().strftime("%H:%M:%S")
-        self.timein.setText(current_time)
+        if mode == 1:
+            self.timein.setText(current_time)
+        else:
+            self.timeout.setText(current_time)
 
     def get_current_date(self):
         """Set current system date into date field"""
         current_date = datetime.datetime.now().strftime("%d/%m/%Y")
         self.date.setText(current_date)
+    
+    def toggle_theme(self):
+        if hasattr(self, 'dark_mode') and self.dark_mode:
+            self.dark_mode = False
+            self.set_light_theme()
+        else:
+            self.dark_mode = True
+            self.set_dark_theme()
 
     def create_database(self):
         """Create SQLite database and users table if not exists"""
@@ -55,7 +95,9 @@ class MainWindow(QMainWindow):
         name = self.name.text().strip()
         address = self.address.text().strip()
         time_in = self.timein.text().strip()
+        time_out = self.timeout.text().strip()
         date = self.date.text().strip()
+        info = (name, address, time_in, date)
 
         # Validation
         if not name or not address or not time_in or not date:
@@ -65,24 +107,42 @@ class MainWindow(QMainWindow):
         # Insert into DB
         with sqlite3.connect("my_db.db") as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO users (name, address, time_in, time_out, date)
-                VALUES (?, ?, ?, ?, ?)
-            """, (name, address, time_in, "", date))
+            # Check if record exists for the given name and date
+            cursor.execute("SELECT * FROM users WHERE name=? AND date=?", (name, date))
+            record = cursor.fetchone()
+
+            if record:
+                # Update time_out for existing record
+                cursor.execute("""
+                    UPDATE users 
+                    SET time_out=? 
+                    WHERE name=? AND date=?
+                """, (time_out, name, date))
+            else:
+                # Insert new record
+                cursor.execute("""
+                    INSERT INTO users (name, address, time_in, time_out, date)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (name, address, time_in, time_out, date))
+
             conn.commit()
 
-        QMessageBox.information(self, "Success", "Record saved successfully!")
 
+        QMessageBox.information(self, "Success", "Record saved successfully!")
+        self.clear()
+
+    def clear(self):
         # Clear fields
         self.name.clear()
         self.address.clear()
         self.timein.clear()
+        self.timeout.clear()
         self.date.clear()
 
-    def update_record(self):
+    def load_record(self):
         """Dialog to update an existing record's timeout."""
         dialog = QDialog(self)
-        dialog.setWindowTitle("Update Record")
+        dialog.setWindowTitle("Load Record")
 
         layout = QFormLayout(dialog)
 
@@ -91,51 +151,33 @@ class MainWindow(QMainWindow):
         name_input.setPlaceholderText("Enter Name")
         layout.addRow("Name:", name_input)
 
-        # --- Timeout field ---
-        timeout_input = QLineEdit()
-        timeout_input.setPlaceholderText("Time Out (HH:MM:SS)")
-        time_btn = QPushButton("⏱")
-        time_btn.clicked.connect(lambda: timeout_input.setText(datetime.datetime.now().strftime("%H:%M:%S")))
-
-        hbox = QHBoxLayout()
-        hbox.addWidget(timeout_input)
-        hbox.addWidget(time_btn)
-        layout.addRow("Time Out:", hbox)
-
         # --- Submit Button ---
-        submit = QPushButton("Update Timeout")
+        submit = QPushButton("Submit")
+        layout.addRow(submit) 
 
-        def _update():
+        def load():
             name = name_input.text().strip()
-            date = datetime.datetime.now().strftime("%d%m%Y")
-            time_out = timeout_input.text().strip()
 
-            if not name or not date or not time_out:
+            if not name:
                 QMessageBox.warning(dialog, "Error", "Please fill all fields.")
                 return
 
             with sqlite3.connect("my_db.db") as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT id, name, date, time_in FROM users WHERE name=? AND date=?
-                """, (name, date))
+                cursor.execute("SELECT * FROM users WHERE name=?", (name,))
                 record = cursor.fetchone()
-
-                if record is None:
-                    QMessageBox.warning(dialog, "Not Found", f"No record found for '{name}' on {date}.")
-                    return
-
-                cursor.execute("""
-                    UPDATE users SET time_out=? WHERE id=?
-                """, (time_out, record[0]))
-                conn.commit()
-
-            QMessageBox.information(dialog, "Success", f"{name}'s timeout updated successfully!")
+                if record:
+                    self.name.setText(record[1])
+                    self.address.setText(record[2])
+                    self.timein.setText(record[3])
+                    self.timeout.setText(record[4])
+                    self.date.setText(record[5])
+                else:
+                    QMessageBox.warning(dialog, "Not Found", f"No record found for name: {name}")
+            
             dialog.close()
-
-        submit.clicked.connect(_update)
-        layout.addWidget(submit)
-
+        
+        submit.clicked.connect(load)
         dialog.exec_()
 
     def settings(self):
@@ -156,10 +198,12 @@ class MainWindow(QMainWindow):
 
     def menu_commands(self, command: QAction):
         """Handles menu item selections"""
-        if command.text() == "Update Record":
-            self.update_record()
+        if command.text() == "Load Record":
+            self.load_record()
         elif command.text() == "Save Record":
             self.save_record()
+        elif command.text() == "Toggle Theme":
+            self.toggle_theme()
         else:
             self.settings()
 
@@ -191,13 +235,17 @@ class MainWindow(QMainWindow):
         save = QAction(QIcon(os.path.join("images", "save.png")), "Save Record", self)
         save.setShortcut("Ctrl+S")
 
-        update = QAction(QIcon(os.path.join("images", "update.png")), "Update Record", self)
-        update.setShortcut("Ctrl+U")
+        load = QAction(QIcon(os.path.join("images", "update.png")), "Load Record", self)
+        load.setShortcut("Ctrl+U")
+
+        toggle = QAction("Toggle Theme", self)
+        toggle.setShortcut("Ctrl+T")
 
         settings_action = QAction(QIcon(os.path.join("images", "settings.png")), "Settings", self)
 
         file.addAction(save)
-        file.addAction(update)
+        file.addAction(load)
+        file.addAction(toggle)
         file.addSeparator()
         file.addAction(settings_action)
         file.triggered.connect(self.menu_commands)
@@ -211,16 +259,20 @@ class MainWindow(QMainWindow):
         self.name = QLineEdit()
         self.address = QLineEdit()
         self.timein = QLineEdit()
+        self.timeout = QLineEdit()
         self.date = QLineEdit()
         self.picture = QLabel()
 
         # Buttons for time/date
         self.get_time_btn = QPushButton("⏱")
-        self.get_time_btn.clicked.connect(self.get_current_time)
+        self.get_time_btn.clicked.connect(lambda: self.get_current_time(1))
+        self.get_time_btn2 = QPushButton("⏱")
+        self.get_time_btn2.clicked.connect(lambda: self.get_current_time(2))
         self.date_btn = QPushButton("📅")
         self.date_btn.clicked.connect(self.get_current_date)
 
         self.timein.setReadOnly(True)
+        self.timeout.setReadOnly(True)
         self.date.setReadOnly(True)
 
         # Profile Picture Placeholder
@@ -235,6 +287,10 @@ class MainWindow(QMainWindow):
         self.time_in_hbox.addWidget(self.timein)
         self.time_in_hbox.addWidget(self.get_time_btn)
 
+        self.time_out_hbox = QHBoxLayout()
+        self.time_out_hbox.addWidget(self.timeout)
+        self.time_out_hbox.addWidget(self.get_time_btn2)
+
         self.date_hbox = QHBoxLayout()
         self.date_hbox.addWidget(self.date)
         self.date_hbox.addWidget(self.date_btn)
@@ -244,6 +300,7 @@ class MainWindow(QMainWindow):
         form.addRow("Name:", self.name)
         form.addRow("Address:", self.address)
         form.addRow("Time in:", self.time_in_hbox)
+        form.addRow("Time out:", self.time_out_hbox)
         form.addRow("Date:", self.date_hbox)
 
         self.form_frame.setLayout(form)
@@ -252,8 +309,65 @@ class MainWindow(QMainWindow):
 
         window.setLayout(vbox)
         self.setCentralWidget(window)
+    
+    def set_light_theme(self):
+        """Apply application stylesheet"""
+        self.title.setStyleSheet("""
+            font-size: 28px;
+            font-weight: bold;
+            color: black;
+            letter-spacing: 2px;
+        """)
+        self.setStyleSheet("""
+            QMainWindow, QDialog {
+                background-color: #f0f0f0;
+            }
+            QLabel {
+                font-size: 17px;
+                font-weight: 500;
+                color: #222;
+            }
+            QLineEdit {
+                padding: 8px 12px;
+                font-size: 16px;
+                border: 1px solid #999;
+                border-radius: 8px;
+                background: white;
+                color: black;
+            }
+            QPushButton {
+                background-color: #0078d7;
+                color: white;
+                border-radius: 8px;
+                font-size: 16px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+                background-color: #005fa3;
+            }
+            #form_frame {
+                background-color: #ffffff;
+                border-radius: 12px;
+                padding: 20px;
+                border: 1px solid #ccc;
+            }
+            QMenu {
+                background-color: white;
+                color: black;
+                border: 1px solid #aaa;
+                border-radius: 5px;
+            }
+            QMenu::item:selected {
+                background-color: #cce4ff;
+            }
+            QMenuBar {
+                font-size: 14px;
+                color: black;
+                background-color: #e0e0e0;
+            }
+        """)
 
-    def initStyle(self):
+    def set_dark_theme(self):
         """Apply application stylesheet"""
         self.title.setStyleSheet("""
             font-size: 28px;
