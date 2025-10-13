@@ -533,10 +533,10 @@ class MainWindow(QMainWindow):
             QLineEdit{padding:8px 12px;font-size:16px;border:1px solid #999;border-radius:8px;background:white;color:black;}
             QPushButton{background-color:#0078d7;color:white;border-radius:8px;font-size:16px;padding:6px 12px;}
             QPushButton:hover{background-color:#005fa3;}
-            QMenuBar{background-color:#C8E1FA;color:#1E2832;font-size:15px}
+            QMenuBar, QMenu{background-color:#C8E1FA;color:#1E2832;font-size:15px}
             QMenuBar::item::selected{background-color:#C8C8C8;color:#1E1E1E;font-size:15px}
-            QMenu{background-color:#C8E1FA;color:#1E2832;font-size:15px}
             QMenu::item::selected{background-color:#C8C8C8;color:#1E1E1E;font-size:15px}
+            QComboBox{background-color:#0078d7;color:white;font-size:14px}
             #form_frame{background-color:#ffffff;border-radius:12px;padding:20px;border:1px solid #ccc;}
                 """)
 
@@ -552,6 +552,7 @@ class MainWindow(QMainWindow):
             QMenuBar::item::selected{background-color:#1E1E1E;color:#C8C8C8;font-size:15px}
             QMenu{background-color:#1E2832;color:#C8E1FA;font-size:15px}
             QMenu::item::selected{background-color:#1E1E1E;color:#C8C8C8;font-size:15px}
+            QComboBox{background-color:#0078d7;color:white;font-size:14px}
             #form_frame{background-color:#1E1E1E;border-radius:12px;padding:20px;border:1px solid #3A3A3A;}
         """)
 
