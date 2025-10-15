@@ -20,10 +20,11 @@ def list_available_cameras(max_index_to_check=10):
 available_cameras = list_available_cameras()
 
 class AdminLogin(QDialog):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
         self.setWindowTitle("Admin Login")
-        self.setFixedSize(300, 150)
+        self.setFixedSize(300, 180)
 
         layout = QFormLayout(self)
 
@@ -38,16 +39,22 @@ class AdminLogin(QDialog):
         self.login_btn.clicked.connect(self.check_credentials)
         layout.addWidget(self.login_btn)
 
+        self.btn = QPushButton("Sign Out")
+        self.btn.clicked.connect(self.sign_out)
+        layout.addWidget(self.btn)
+
     def check_credentials(self):
         username = self.username_input.text().strip()
         password = self.password_input.text().strip()
 
-        # replace with a real admin check in production
         if username == "admin" and password == "1234":
             self.accept()
         else:
             QMessageBox.warning(self, "Error", "Invalid credentials.")
-
+    
+    def sign_out(self):
+        self.parent.admin = False
+        self.destroy()
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -65,6 +72,7 @@ class MainWindow(QMainWindow):
         self.cap = None
         self.cam_timer = None
         self.current_camera_index = None
+        self.admin = False
 
     # ------------------------------
     # Database and Utility
@@ -108,10 +116,7 @@ class MainWindow(QMainWindow):
 
     def get_current_time(self, mode):
         current_time = datetime.datetime.now().strftime("%H:%M:%S")
-        if mode == 1:
-            self.timein.setText(current_time)
-        else:
-            self.timeout.setText(current_time)
+        self.timeout.setText(current_time)
 
     def get_current_date(self):
         current_date = datetime.datetime.now().strftime("%d/%m/%Y")
@@ -129,12 +134,12 @@ class MainWindow(QMainWindow):
         tag = self.tag.text().strip()
         name = self.name.text().strip()
         address = self.address.text().strip()
-        time_in = self.timein.text().strip()
+        time_in = datetime.datetime.now().strftime("%H:%M:%S")
         purpose = self.purpose.text().strip()
         time_out = self.timeout.text().strip()
         date = self.date.text().strip()
 
-        if not name or not address or not time_in or not date or not purpose:
+        if not name or not address or not date or not purpose:
             QMessageBox.warning(self, "Error", "Please fill all required fields.")
             return
 
@@ -153,7 +158,7 @@ class MainWindow(QMainWindow):
             record = cursor.fetchone()
 
             if record:
-                reply = QMessageBox.question(self, "Confirm", f"Update time-out for {name}?", QMessageBox.Yes | QMessageBox.No)
+                reply = QMessageBox.question(self, "Confirm", f"Update profile for {name}?", QMessageBox.Yes | QMessageBox.No)
                 if reply == QMessageBox.Yes:
                     cursor.execute(
                         "UPDATE users SET time_out=?, picture=? WHERE name=? AND date=?",
@@ -168,13 +173,12 @@ class MainWindow(QMainWindow):
 
         self.clear()
         QMessageBox.information(self, "Success", "Record saved successfully!")
-        # do NOT auto-backup by default; call backup_to_cloud manually if desired
+        self.data.add_widget(QLabel(name))
 
     def clear(self):
         self.tag.clear()
         self.name.clear()
         self.address.clear()
-        self.timein.clear()
         self.purpose.clear()
         self.timeout.clear()
         self.date.clear()
@@ -218,16 +222,12 @@ class MainWindow(QMainWindow):
                 cursor.execute("SELECT * FROM users WHERE tag=? AND date=?", (tag, date))
                 record = cursor.fetchone()
                 if record:
-                    # record schema: id, tag, name, address, purpose, time_in, time_out, date, picture
-                    # your original mapping used different index; adapt accordingly:
-                    # Let's map by column names to be safe
-                    # But since we used positional columns earlier, we can rely on positions:
-                    # [0]=id, [1]=tag, [2]=name, [3]=address, [4]=purpose, [5]=time_in, [6]=time_out, [7]=date, [8]=picture
+                    # [0]=id, [1]=tag, [2]=name, [3]=address, [4]=purpose, [5]=time_in,
+                    #  [6]=time_out, [7]=date, [8]=picture
                     self.tag.setText(str(record[1] or ""))
                     self.name.setText(str(record[2] or ""))
                     self.address.setText(str(record[3] or ""))
                     self.purpose.setText(str(record[4] or ""))
-                    self.timein.setText(str(record[5] or ""))
                     self.timeout.setText(str(record[6] or ""))
                     self.date.setText(str(record[7] or ""))
                     if record[8]:
@@ -246,45 +246,50 @@ class MainWindow(QMainWindow):
         dialog.exec_()
 
     def view(self):
-        dialog = QMainWindow(self)
-        dialog.setWindowTitle("View logs for today")
-        dialog.resize(self.width() - 30, self.height() - 30)
+        if self.admin:
+            dialog = QMainWindow(self)
+            dialog.setWindowTitle("View logs")
+            dialog.resize(self.width() + 60, self.height() - 30)
 
-        win = QWidget()
-        vbox = QVBoxLayout()
+            win = QWidget()
+            vbox = QVBoxLayout()
 
-        table = QTableWidget()
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            date = datetime.datetime.now().strftime("%d/%m/%Y")
-            cursor.execute("SELECT tag, name, address, time_in, purpose, time_out FROM users WHERE date=?", (date,))
-            info = cursor.fetchall()
+            table = QTableWidget()
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                date = datetime.datetime.now().strftime("%d/%m/%Y")
+                cursor.execute("SELECT tag, name, address, time_in, purpose, time_out, date FROM users ")
+                info = cursor.fetchall()
 
-            rows, columns = len(info), 6
+                rows, columns = len(info), 7
 
-            table.setRowCount(rows)
-            table.setColumnCount(columns)
+                table.setRowCount(rows)
+                table.setColumnCount(columns)
 
-            for row_idx, row_val in enumerate(info):
-                for col_idx, cell in enumerate(row_val):
-                    text = "" if cell is None else str(cell)
-                    item = QTableWidgetItem(text)
-                    item.setTextAlignment(Qt.AlignCenter)
-                    item.setBackground(QColor(200, 200, 255))
-                    item.setFont(QFont("Consolas"))
-                    table.setItem(row_idx, col_idx, item)
+                for row_idx, row_val in enumerate(info):
+                    for col_idx, cell in enumerate(row_val):
+                        text = "" if cell is None else str(cell)
+                        item = QTableWidgetItem(text)
+                        item.setTextAlignment(Qt.AlignCenter)
+                        item.setBackground(QColor(200, 200, 255))
+                        item.setFont(QFont("Consolas"))
+                        table.setItem(row_idx, col_idx, item)
 
-            table.setHorizontalHeaderLabels(["Tag", "Name", "Address", "Time In", "Purpose", "Time out"])
+                table.setHorizontalHeaderLabels(["Tag", "Name", "Address", "Time In", "Purpose", "Time out", "Date"])
+        
+            vbox.addWidget(table)
+            win.setLayout(vbox)
+            dialog.setCentralWidget(win)
+            dialog.show()
+        else:
+            QMessageBox.information(self, "Not admin", "You are not the admin")
 
-        vbox.addWidget(table)
-        win.setLayout(vbox)
-        dialog.setCentralWidget(win)
-        dialog.show()
 
     def settings(self):
-        admin = AdminLogin()
+        admin = AdminLogin(self)
         if admin.exec_() == QDialog.Accepted:
             QMessageBox.information(self, "Access Granted", "Welcome, Admin!")
+            self.admin = True
         else:
             QMessageBox.warning(self, "Access Denied", "Invalid credentials.")
 
@@ -450,7 +455,7 @@ class MainWindow(QMainWindow):
         toggle.setShortcut("Ctrl+T")
         view = QAction("View Table", self)
         view.setShortcut("Ctrl+V")
-        settings_action = QAction("Settings", self)
+        settings_action = QAction("Sign In", self)
         file.addAction(save)
         file.addAction(load)
         file.addAction(toggle)
@@ -462,25 +467,23 @@ class MainWindow(QMainWindow):
         # --- FORM ---
         self.form_frame = QFrame()
         self.form_frame.setObjectName("form_frame")
+
+        # ---- INPUT FIELDS ----
         form = QFormLayout()
 
         self.tag = QLineEdit()
         self.name = QLineEdit()
         self.address = QLineEdit()
         self.purpose = QLineEdit()
-        self.timein = QLineEdit()
         self.timeout = QLineEdit()
         self.date = QLineEdit()
         self.picture = QLabel()
 
-        self.get_time_btn = QPushButton("⏱")
-        self.get_time_btn.clicked.connect(lambda: self.get_current_time(1))
         self.get_time_btn2 = QPushButton("⏱")
         self.get_time_btn2.clicked.connect(lambda: self.get_current_time(2))
         self.date_btn = QPushButton("📅")
         self.date_btn.clicked.connect(self.get_current_date)
 
-        self.timein.setReadOnly(True)
         self.timeout.setReadOnly(True)
         self.date.setReadOnly(True)
 
@@ -495,10 +498,6 @@ class MainWindow(QMainWindow):
         change_btn.clicked.connect(lambda: self.open_camera_dialog(0))
         picture_hbox.addWidget(change_btn, alignment=Qt.AlignCenter)
 
-        self.time_in_hbox = QHBoxLayout()
-        self.time_in_hbox.addWidget(self.timein)
-        self.time_in_hbox.addWidget(self.get_time_btn)
-
         self.time_out_hbox = QHBoxLayout()
         self.time_out_hbox.addWidget(self.timeout)
         self.time_out_hbox.addWidget(self.get_time_btn2)
@@ -511,10 +510,11 @@ class MainWindow(QMainWindow):
         form.addRow("Tag:", self.tag)
         form.addRow("Name:", self.name)
         form.addRow("Address:", self.address)
-        form.addRow("Time in:", self.time_in_hbox)
         form.addRow("Purpose:", self.purpose)
         form.addRow("Time out:", self.time_out_hbox)
         form.addRow("Date:", self.date_hbox)
+
+        form.setAlignment(Qt.AlignLeft)
 
         self.form_frame.setLayout(form)
         vbox.addWidget(self.form_frame)
@@ -537,7 +537,7 @@ class MainWindow(QMainWindow):
             QMenuBar::item::selected{background-color:#C8C8C8;color:#1E1E1E;font-size:15px}
             QMenu::item::selected{background-color:#C8C8C8;color:#1E1E1E;font-size:15px}
             QComboBox{background-color:#0078d7;color:white;font-size:14px}
-            #form_frame{background-color:#ffffff;border-radius:12px;padding:20px;border:1px solid #ccc;}
+            #form_frame, #data{background-color:#ffffff;border-radius:12px;padding:20px;border:1px solid #ccc;}
                 """)
 
     def set_dark_theme(self):
@@ -553,7 +553,7 @@ class MainWindow(QMainWindow):
             QMenu{background-color:#1E2832;color:#C8E1FA;font-size:15px}
             QMenu::item::selected{background-color:#1E1E1E;color:#C8C8C8;font-size:15px}
             QComboBox{background-color:#0078d7;color:white;font-size:14px}
-            #form_frame{background-color:#1E1E1E;border-radius:12px;padding:20px;border:1px solid #3A3A3A;}
+            #form_frame, #data{background-color:#1E1E1E;border-radius:12px;padding:20px;border:1px solid #3A3A3A;}
         """)
 
 # ------------------------------
