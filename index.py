@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap, QImage, QColor, QFont
-import sys, datetime, sqlite3, os, cv2
+import sys, datetime, sqlite3, os, cv2, csv, base64
 
 def list_available_cameras(max_index_to_check=10):
     available_cameras = []
@@ -252,44 +252,71 @@ class MainWindow(QMainWindow):
             info = conn.fetchall()
         
         if type_of == "csv":
-            with open(file_path, "w") as e:
-                e.write('"tag","name","address","purpose","time_in","time_out","date"\n')
-                for i in info:
-                    e.write(",".join(i))
+            with open(file_path, "w", encoding="utf-8") as e:
+                writer = csv.writer(e)
+                writer.writerow(["tag", "name", "address", "purpose", "time_in", "time_out", "date"])
+                writer.writerows(info)
         elif type_of == "html":
-            with open(file_path, "w") as e:
-                e.writelines([
-                    "<!DOCTYPE html>\n",
-                    '<html lang="en">\n',
-                    "<head> <title>Document</title> </head>\n",
-                    "<body>\n",
-                    "    <style>\n",
-                    "        table, th, td{border: 1px solid black;}\n",
-                    "        table{border-collapse: collapse;width: 60%;margin: 0 auto;}\n",
-                    "        th, td{padding: 8px;text-align: left;}\n",
-                    "    </style>\n",
-                    "    <table>\n",
-                    "        <thead>\n",
-                    "            <tr>\n",
-                    "                <th>Tag</th> <th>Name</th> <th>Address</th> <th>Purpose</th> <th>Time In</th> <th>Time Out</th> <th>Date</th>\n",
-                    "            </tr>\n",
-                    "        </thead>\n",
-                    "        <tbody>\n",
-                    "        </tbody>\n",
-                    "    </table>\n",
-                    "    <script>\n"
-                ])
-                for count, i in enumerate(info):
-                    e.write("\t\t const t = document.createElement('tr')\n")
-                    e.write(f"\t\t t.id = 'tr{count}'\n")
-                    e.write(f'\t\t document.querySelector("tbody").appendChild(t)\n')
-                    for count2, j in enumerate(i):
-                        e.write(f"\t\t const f{count2} = document.createElement('td')\n")
-                        e.write(f"\t\t f{count2}.textContent = '{j}'\n")
-                        e.write(f"\t\t document.getElementById('tr{count}').appendChild(f{count2})\n")    
+            with open(file_path, "w", encoding="utf-8") as e:
+                e.write("""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Access Control Records</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        table { border-collapse: collapse; width: 100%; background: white; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        th { background-color: #0078d7; color: white; }
+        img { width: 80px; height: 80px; border-radius: 8px; object-fit: cover; }
+    </style>
+</head>
+<body>
+    <h2>Access Control Records</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Tag</th>
+                <th>Name</th>
+                <th>Address</th>
+                <th>Purpose</th>
+                <th>Time In</th>
+                <th>Time Out</th>
+                <th>Date</th>
+                <th>Picture</th>
+            </tr>
+        </thead>
+        <tbody>
+""")
 
-                e.writelines(["    </script>\n", "</body>\n", "</html>\n"])
+            for row in info:
+                tag, name, address, purpose, time_in, time_out, date, picture = row
+                if picture:
+                    img_data = base64.b64encode(picture).decode("utf-8")
+                    img_tag = f'<img src="data:image/jpeg;base64,{img_data}">'
+                else:
+                    img_tag = '<span style="color:#888;">No Image</span>'
 
+                e.write(f"""
+            <tr>
+                <td>{tag or ''}</td>
+                <td>{name or ''}</td>
+                <td>{address or ''}</td>
+                <td>{purpose or ''}</td>
+                <td>{time_in or ''}</td>
+                <td>{time_out or ''}</td>
+                <td>{date or ''}</td>
+                <td>{img_tag}</td>
+            </tr>
+""")
+
+            e.write("""
+        </tbody>
+    </table>
+</body>
+</html>
+""")
         msgbox = QMessageBox(self)
         msgbox.setWindowTitle("File saved sucessfully")
         msgbox.setText(f"File is saved at {file_path}")
@@ -301,8 +328,8 @@ class MainWindow(QMainWindow):
     def view(self):
         if self.admin:
             dialog = QMainWindow(self)
-            dialog.setWindowTitle("View logs")
-            dialog.resize(self.width() + 100, self.height() - 30)
+            dialog.setWindowTitle("View Logs")
+            dialog.resize(self.width() + 150, self.height() + 100)
 
             menu = dialog.menuBar()
             file = menu.addMenu("File")
@@ -311,18 +338,27 @@ class MainWindow(QMainWindow):
             export.addAction("Export to csv").triggered.connect(lambda: self.export("csv"))
             export.addAction("Export to html").triggered.connect(lambda: self.export("html"))
 
+            # --- CENTRAL WIDGET ---
             win = QWidget()
             vbox = QVBoxLayout()
 
+            # --- SEARCH BAR ---
+            search_box = QHBoxLayout()
+            search_label = QLabel("🔍 Search:")
+            search_input = QLineEdit()
+            search_input.setPlaceholderText("Type to search by tag, name, address, or date...")
+            search_box.addWidget(search_label)
+            search_box.addWidget(search_input)
+            vbox.addLayout(search_box)
+
+            # --- TABLE WIDGET ---
             table = QTableWidget()
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                date = datetime.datetime.now().strftime("%d/%m/%Y")
-                cursor.execute("SELECT tag, name, address, time_in, purpose, time_out, date FROM users ")
+                cursor.execute("SELECT tag, name, address, time_in, purpose, time_out, date FROM users")
                 info = cursor.fetchall()
 
                 rows, columns = len(info), 7
-
                 table.setRowCount(rows)
                 table.setColumnCount(columns)
 
@@ -331,15 +367,30 @@ class MainWindow(QMainWindow):
                         text = "" if cell is None else str(cell)
                         item = QTableWidgetItem(text)
                         item.setTextAlignment(Qt.AlignCenter)
-                        item.setBackground(QColor(200, 200, 255))
-                        item.setFont(QFont("Consolas"))
+                        item.setBackground(QColor(30, 30, 40))
+                        item.setFont(QFont("Consolas", 10))
                         table.setItem(row_idx, col_idx, item)
 
-                table.setHorizontalHeaderLabels(["Tag", "Name", "Address", "Time In", "Purpose", "Time out", "Date"])
-        
+                table.setHorizontalHeaderLabels(["Tag", "Name", "Address", "Time In", "Purpose", "Time Out", "Date"])
             vbox.addWidget(table)
             win.setLayout(vbox)
             dialog.setCentralWidget(win)
+
+            # --- FILTER FUNCTION ---
+            def filter_table():
+                filter_text = search_input.text().strip().lower()
+                for row in range(table.rowCount()):
+                    match = False
+                    for col in range(table.columnCount()):
+                        item = table.item(row, col)
+                        if filter_text in item.text().lower():
+                            match = True
+                            break
+                    table.setRowHidden(row, not match)
+
+            # Connect filter
+            search_input.textChanged.connect(filter_table)
+
             dialog.show()
         else:
             QMessageBox.information(self, "Not admin", "You are not the admin")
@@ -362,6 +413,12 @@ class MainWindow(QMainWindow):
             self.toggle_theme()
         elif command.text() == "View Table":
             self.view()
+        elif command.text() == "Clear All":
+            self.clear()
+        elif command.text() == "Clear Date":
+            self.date.clear()
+        elif command.text() == "Clear Timeout":
+            self.timeout.clear()
         else:
             self.settings()
 
@@ -523,6 +580,12 @@ class MainWindow(QMainWindow):
         file.addSeparator()
         file.addAction(settings_action)
         file.triggered.connect(self.menu_commands)
+
+        edit = menu.addMenu("Edit")
+        edit.addAction("Clear All")
+        edit.addAction("Clear Date")
+        edit.addAction("Clear Timeout")
+        edit.triggered.connect(self.menu_commands)
 
         # --- FORM ---
         self.form_frame = QFrame()
