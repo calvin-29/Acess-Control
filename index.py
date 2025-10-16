@@ -173,7 +173,6 @@ class MainWindow(QMainWindow):
 
         self.clear()
         QMessageBox.information(self, "Success", "Record saved successfully!")
-        self.data.add_widget(QLabel(name))
 
     def clear(self):
         self.tag.clear()
@@ -219,7 +218,7 @@ class MainWindow(QMainWindow):
 
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM users WHERE tag=? AND date=?", (tag, date))
+                cursor.execute("SELECT * FROM users WHERE tag=? AND date=?", (tag.rjust(3, '0'), date))
                 record = cursor.fetchone()
                 if record:
                     # [0]=id, [1]=tag, [2]=name, [3]=address, [4]=purpose, [5]=time_in,
@@ -244,12 +243,73 @@ class MainWindow(QMainWindow):
 
         submit.clicked.connect(load)
         dialog.exec_()
+    
+    def export(self, type_of):
+        file_path = os.path.join(os.path.expanduser("~"), "Documents", f"file.{type_of}")
+        with sqlite3.connect(self.db_path) as f:
+            conn = f.cursor()
+            conn.execute("SELECT tag, name, address, purpose, time_in, time_out, date FROM users")
+            info = conn.fetchall()
+        
+        if type_of == "csv":
+            with open(file_path, "w") as e:
+                e.write('"tag","name","address","purpose","time_in","time_out","date"\n')
+                for i in info:
+                    e.write(",".join(i))
+        elif type_of == "html":
+            with open(file_path, "w") as e:
+                e.writelines([
+                    "<!DOCTYPE html>\n",
+                    '<html lang="en">\n',
+                    "<head> <title>Document</title> </head>\n",
+                    "<body>\n",
+                    "    <style>\n",
+                    "        table, th, td{border: 1px solid black;}\n",
+                    "        table{border-collapse: collapse;width: 60%;margin: 0 auto;}\n",
+                    "        th, td{padding: 8px;text-align: left;}\n",
+                    "    </style>\n",
+                    "    <table>\n",
+                    "        <thead>\n",
+                    "            <tr>\n",
+                    "                <th>Tag</th> <th>Name</th> <th>Address</th> <th>Purpose</th> <th>Time In</th> <th>Time Out</th> <th>Date</th>\n",
+                    "            </tr>\n",
+                    "        </thead>\n",
+                    "        <tbody>\n",
+                    "        </tbody>\n",
+                    "    </table>\n",
+                    "    <script>\n"
+                ])
+                for count, i in enumerate(info):
+                    e.write("\t\t const t = document.createElement('tr')\n")
+                    e.write(f"\t\t t.id = 'tr{count}'\n")
+                    e.write(f'\t\t document.querySelector("tbody").appendChild(t)\n')
+                    for count2, j in enumerate(i):
+                        e.write(f"\t\t const f{count2} = document.createElement('td')\n")
+                        e.write(f"\t\t f{count2}.textContent = '{j}'\n")
+                        e.write(f"\t\t document.getElementById('tr{count}').appendChild(f{count2})\n")    
+
+                e.writelines(["    </script>\n", "</body>\n", "</html>\n"])
+
+        msgbox = QMessageBox(self)
+        msgbox.setWindowTitle("File saved sucessfully")
+        msgbox.setText(f"File is saved at {file_path}")
+        button = msgbox.addButton(QMessageBox.Ok)
+        button = msgbox.addButton("Show in folder", QMessageBox.ActionRole)
+        button.clicked.connect(lambda: os.system(f'explorer "{os.path.split(file_path)[0]}"'))
+        msgbox.exec_()
 
     def view(self):
         if self.admin:
             dialog = QMainWindow(self)
             dialog.setWindowTitle("View logs")
-            dialog.resize(self.width() + 60, self.height() - 30)
+            dialog.resize(self.width() + 100, self.height() - 30)
+
+            menu = dialog.menuBar()
+            file = menu.addMenu("File")
+
+            export = file.addMenu("Export")
+            export.addAction("Export to csv").triggered.connect(lambda: self.export("csv"))
+            export.addAction("Export to html").triggered.connect(lambda: self.export("html"))
 
             win = QWidget()
             vbox = QVBoxLayout()
