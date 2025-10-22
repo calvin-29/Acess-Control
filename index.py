@@ -4,8 +4,8 @@ from PyQt5.QtWidgets import (
     QHBoxLayout, QWidget, QLineEdit, QMessageBox, QDialog, QFrame, QAction, QTextEdit,
     QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QListWidget, QInputDialog
 )
-from PyQt5.QtCore import Qt, QTimer, QSize
-from PyQt5.QtGui import QPixmap, QImage, QFont
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QPixmap, QImage, QFont, QIcon
 import sys
 import datetime
 import sqlite3
@@ -14,8 +14,6 @@ import cv2
 import csv
 import base64
 import hashlib
-
-APP_NAME = "AccessControl"
 
 def list_available_cameras(max_index_to_check=6):
     available_cameras = []
@@ -33,13 +31,13 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 def get_appdata_dir():
-    # Prefer LOCALAPPDATA on Windows, fallback to APPDATA, else use user home / XDG
+    COMPANY, APP_NAME = "CruzTech", "Access_Control"
     if sys.platform.startswith("win"):
-        local = os.getenv("LOCALAPPDATA") or os.getenv("APPDATA")
+        local = os.getenv("APPDATA")
         if local:
-            base = os.path.join(local, APP_NAME)
+            base = os.path.join(local, COMPANY, APP_NAME)
         else:
-            base = os.path.join(os.path.expanduser("~"), f".{APP_NAME.lower()}")
+            base = os.path.join(os.path.expanduser("~"), f".{COMPANY.lower()}", APP_NAME)
     else:
         xdg = os.getenv("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
         base = os.path.join(xdg, APP_NAME)
@@ -175,16 +173,21 @@ class AdminManager(QDialog):
                 QMessageBox.critical(self, "Error", f"Failed to delete admin:\n{e}")
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, size):
         super().__init__()
         self.dark_mode = True  # start dark theme; user can toggle
         self.setWindowTitle("Access Control Management System")
-        self.setGeometry(100, 100, 760, 600)
 
         appdata = get_appdata_dir()
         self.db_path = os.path.join(appdata, "my_db.db")
         self.images_dir = os.path.join(os.path.split(__file__)[0], "images")
-        os.makedirs(self.images_dir, exist_ok=True)
+        
+        self.app_size = size
+
+        icon_path = os.path.join(self.images_dir, "logo.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        self.setFixedSize(600, 700)
 
         self.create_database()
         self.initUI()
@@ -321,7 +324,7 @@ class MainWindow(QMainWindow):
         temp_image = os.path.join(self.images_dir, "temp.jpg")
 
         if os.path.exists(profile_path):
-            pixmap = QPixmap(profile_path).scaled(100, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pixmap = QPixmap(profile_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.picture.setPixmap(pixmap)
         else:
             self.picture.clear()
@@ -365,11 +368,11 @@ class MainWindow(QMainWindow):
                         if record[8]:
                             pixmap = QPixmap()
                             pixmap.loadFromData(record[8])
-                            self.picture.setPixmap(pixmap.scaled(100, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                            self.picture.setPixmap(pixmap.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
                         else:
                             path = os.path.join(self.images_dir, "profile.jpg")
                             if os.path.exists(path):
-                                self.picture.setPixmap(QPixmap(path).scaled(100, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                                self.picture.setPixmap(QPixmap(path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
                     else:
                         QMessageBox.warning(dialog, "Not Found", f"No record found for tag: {tag}")
             except Exception as e:
@@ -483,7 +486,7 @@ class MainWindow(QMainWindow):
         if self.admin:
             dialog = QMainWindow(self)
             dialog.setWindowTitle("View Logs")
-            dialog.resize(self.width() + 300, self.height() + 200)
+            dialog.resize(self.width()+300, self.height())
 
             menu = dialog.menuBar()
             file = menu.addMenu("File")
@@ -711,7 +714,7 @@ class MainWindow(QMainWindow):
             profile_path = os.path.join(self.images_dir, "temp.jpg")
             cv2.imwrite(profile_path, face_crop)
 
-            pixmap = QPixmap(profile_path).scaled(100, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pixmap = QPixmap(profile_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.picture.setPixmap(pixmap)
             QMessageBox.information(self, "Saved", "Profile picture updated.")
             self.statusBar().showMessage("Profile picture updated", 2000)
@@ -756,12 +759,10 @@ class MainWindow(QMainWindow):
         # Title + logo
         hbox = QHBoxLayout()
         self.title = QLabel("Access Control System")
-        self.title.setFont(QFont("Segoe UI", 20, QFont.Bold))
+        self.title.setFont(QFont("Segoe UI", 30, QFont.Bold))
         logo = QLabel()
         logo_path = os.path.join(self.images_dir, "logo.png")
-        print(logo_path)
         if os.path.exists(logo_path):
-            print("d")
             pixmap = QPixmap(logo_path).scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             logo.setPixmap(pixmap)
         hbox.addWidget(logo, alignment=Qt.AlignLeft)
@@ -793,13 +794,10 @@ class MainWindow(QMainWindow):
         edit.addAction("Clear Timeout")
         edit.triggered.connect(self.menu_commands)
 
-        # Form (card)
         self.form_frame = QFrame()
         self.form_frame.setObjectName("form_frame")
-        self.form_frame.setMinimumHeight(260)
 
         form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignLeft)
 
         self.tag = QLineEdit()
         self.name = QLineEdit()
@@ -808,7 +806,12 @@ class MainWindow(QMainWindow):
         self.timeout = QLineEdit()
         self.date = QLineEdit()
         self.picture = QLabel()
-        self.picture.setFixedSize(QSize(100, 90))
+
+        self.tag.setPlaceholderText("001")
+        self.name.setPlaceholderText("Emmanuel Eze")
+        self.address.setPlaceholderText("Gwarinpa")
+        self.purpose.setPlaceholderText("To Code")
+        self.picture.setStyleSheet("border: 3px solid blue; border-radius:10px")
 
         self.get_time_btn2 = QPushButton("⏱")
         self.get_time_btn2.setToolTip("Set current time")
@@ -821,14 +824,15 @@ class MainWindow(QMainWindow):
         self.date.setReadOnly(True)
 
         picture_hbox = QHBoxLayout()
+        picture_hbox.setAlignment(Qt.AlignCenter)
         profile_path = os.path.join(self.images_dir, "profile.jpg")
         if os.path.exists(profile_path):
             self.picture.setPixmap(QPixmap(profile_path).scaled(100, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        picture_hbox.addWidget(self.picture, alignment=Qt.AlignCenter)
+        picture_hbox.addWidget(self.picture)
 
         change_btn = QPushButton("Change Photo")
         change_btn.clicked.connect(lambda: self.open_camera_dialog(0))
-        picture_hbox.addWidget(change_btn, alignment=Qt.AlignCenter)
+        picture_hbox.addWidget(change_btn)
 
         self.time_out_hbox = QHBoxLayout()
         self.time_out_hbox.addWidget(self.timeout)
@@ -848,9 +852,13 @@ class MainWindow(QMainWindow):
 
         self.form_frame.setLayout(form)
         vbox.addWidget(self.form_frame)
-        vbox.setAlignment(Qt.AlignTop)
         window.setLayout(vbox)
         self.setCentralWidget(window)
+    
+    def resizeEvent(self, a0):
+        self.setGeometry(self.app_size.width()//2-self.width()//2, self.app_size.height()//2-self.height()//2, self.width(), self.height())
+        
+        return super().resizeEvent(a0)
 
     # ------------------------------
     # Themes
@@ -858,12 +866,13 @@ class MainWindow(QMainWindow):
     def set_light_theme(self):
         self.title.setStyleSheet("font-size:20px;font-weight:700;color:#222;letter-spacing:1px;")
         self.setStyleSheet("""
-            QMainWindow,QDialog{background-color:#f8f9fb;}
+            QMainWindow,QDialog{background-color:rgb(235, 235, 200);}
             QLabel{font-size:14px;color:#222;}
             QLineEdit, QTextEdit{padding:8px 10px;font-size:14px;border:1px solid #bdbdbd;border-radius:6px;background:white;color:black;}
             QPushButton{background-color:#0078d7;color:white;border-radius:8px;font-size:14px;padding:6px 10px;}
             QPushButton:hover{background-color:#005fa3;}
             QMenuBar, QMenu{background-color:#e9f2ff;color:#1E2832;font-size:13px}
+            QMenuBar::item::selected, QMenu::item::selected{background-color:#e9f2df;color:#1E2812;}
             QComboBox{background-color:#0078d7;color:white;font-size:13px}
             #form_frame{background-color:#ffffff;border-radius:10px;padding:16px;border:1px solid #e1e1e1;}
         """)
@@ -871,14 +880,15 @@ class MainWindow(QMainWindow):
     def set_dark_theme(self):
         self.title.setStyleSheet("font-size:20px;font-weight:700;color:white;letter-spacing:1px;")
         self.setStyleSheet("""
-            QMainWindow,QDialog{background-color:#2A2A2A;}
-            QLabel{font-size:14px;color:white;}
-            QLineEdit, QTextEdit{padding:8px 10px;font-size:14px;border:1px solid #555;border-radius:6px;background:#f7f7f7;color:black;}
+            QMainWindow,QDialog{background-color:rgb(20, 20, 50);}
+            QLabel{font-size:16px;font-weight:400;font-family:"Segoe UI";color:white;margin:0px 0px 5px 0px}
+            QLineEdit, QTextEdit{padding:8px 10px;font-size:16px;border:1px solid #555;border-radius:6px;background:rgb(20, 20, 40);color:white;;margin:0px 0px 5px 0px}
             QPushButton{background-color:#0078d7;color:white;border-radius:8px;font-size:14px;padding:6px 10px;}
             QPushButton:hover{background-color:#005fa3;}
-            QMenuBar{background-color:#1E2832;color:#C8E1FA;font-size:13px}
+            QMenuBar, QMenu{background-color:#1E2832;color:#C8E1FA;font-size:15px}
+            QMenuBar::item::selected, QMenu::item::selected{background-color:#1E2842;color:#C8E1EA}
             QComboBox{background-color:#0078d7;color:white;font-size:13px}
-            #form_frame{background-color:#1E1E1E;border-radius:10px;padding:16px;border:1px solid #333;}
+            #form_frame{background-color:rgb(20, 20, 45);border-radius:10px;padding:16px;border:1px solid #333;}
         """)
 
 # ------------------------------
@@ -886,6 +896,6 @@ class MainWindow(QMainWindow):
 # ------------------------------
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = MainWindow(app.primaryScreen().size())
     window.show()
     sys.exit(app.exec_())
