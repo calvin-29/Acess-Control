@@ -180,8 +180,8 @@ class MainWindow(QMainWindow):
 
         appdata = get_appdata_dir()
         self.db_path = os.path.join(appdata, "my_db.db")
-        self.images_dir = os.path.join(os.path.split(__file__)[0], "images")
-        
+        self.images_dir = "images"
+
         self.app_size = size
 
         icon_path = os.path.join(self.images_dir, "logo.png")
@@ -235,20 +235,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Database Error", f"Failed to create database:\n{e}")
 
-    def backup_to_cloud(self, access_token: str = None):
-        if not access_token:
-            QMessageBox.information(self, "Backup Skipped", "No access token provided for cloud backup.")
-            return
-        try:
-            import dropbox
-            dbx = dropbox.Dropbox(access_token)
-            with open(self.db_path, "rb") as f:
-                backup_name = f"backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-                dbx.files_upload(f.read(), f"/{backup_name}", mode=dropbox.files.WriteMode.overwrite)
-            QMessageBox.information(self, "Backup Complete", "Database backup uploaded to Dropbox successfully!")
-        except Exception as e:
-            QMessageBox.critical(self, "Backup Failed", f"Error uploading to Dropbox:\n{e}")
-
     def get_current_time(self, mode=None):
         current_time = datetime.datetime.now().strftime("%H:%M:%S")
         self.timeout.setText(current_time)
@@ -272,7 +258,7 @@ class MainWindow(QMainWindow):
         name = self.name.text().strip()
         address = self.address.text().strip()
         time_in = datetime.datetime.now().strftime("%H:%M:%S")
-        purpose = self.purpose.text().strip()
+        purpose = self.purpose.toPlainText().strip()
         time_out = self.timeout.text().strip()
         date = self.date.text().strip()
 
