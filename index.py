@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout, QWidget, QLineEdit, QMessageBox, QDialog, QFrame, QAction, QTextEdit,
     QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QListWidget, QInputDialog
 )
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A3
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
@@ -103,6 +103,8 @@ class AdminManager(QDialog):
     Simple admin manager: list admins, add admin, delete selected admin.
     Only available to signed-in admins.
     """
+
+    # noinspection PyUnresolvedReferences
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
@@ -181,21 +183,20 @@ class AdminManager(QDialog):
                 QMessageBox.critical(self, "Error", f"Failed to delete admin:\n{e}")
 
 class MainWindow(QMainWindow):
-    def __init__(self, size):
+    def __init__(self):
         super().__init__()
-        self.dark_mode = True  # start dark theme; user can toggle
-        self.setWindowTitle("Access Control Management System")
+        self.dark_mode = True
+        self.setWindowTitle("Visitor Login")
+
+        self.setWindowState(Qt.WindowMaximized)
 
         appdata = get_appdata_dir()
         self.db_path = os.path.join(appdata, "my_db.db")
         self.images_dir = "images"
 
-        self.app_size = size
-
         icon_path = os.path.join(self.images_dir, "logo.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        self.setFixedSize(600, 700)
 
         self.create_database()
         self.initUI()
@@ -220,7 +221,9 @@ class MainWindow(QMainWindow):
                         tag TEXT,
                         name TEXT,
                         address TEXT,
+                        phone TEXT,
                         purpose TEXT,
+                        who TEXT,
                         time_in TEXT,
                         time_out TEXT,
                         date TEXT,
@@ -265,13 +268,19 @@ class MainWindow(QMainWindow):
         tag = self.tag.text().strip()
         name = self.name.text().strip()
         address = self.address.text().strip()
+        phone = self.phone.text().strip()
         time_in = datetime.datetime.now().strftime("%H:%M:%S")
         purpose = self.purpose.toPlainText().strip()
+        who = self.who_to_meet.text().strip()
         time_out = self.timeout.text().strip()
         date = self.date.text().strip()
 
-        if not name or not address or not date or not purpose:
+        if not name or not address or not date or not purpose or not phone or not who:
             QMessageBox.warning(self, "Error", "Please fill all required fields.")
+            return
+
+        if len(phone) != 11 or not phone.isnumeric():
+            QMessageBox.warning(self, "Error", "Phone number is invalid")
             return
 
         profile_path = os.path.join(self.images_dir, "temp.jpg")
@@ -283,7 +292,7 @@ class MainWindow(QMainWindow):
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM users WHERE name=? AND date=?", (name, date))
+                cursor.execute("SELECT * FROM users WHERE date=? AND tag=?", (date, tag))
                 record = cursor.fetchone()
 
                 if record:
@@ -297,8 +306,9 @@ class MainWindow(QMainWindow):
                 else:
                     normalized_tag = tag.rjust(3, '0') if tag else None
                     cursor.execute(
-                        "INSERT INTO users (tag, name, address, time_in, purpose, time_out, date, picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        (normalized_tag, name, address, time_in, purpose, time_out, date, picture_data)
+                        """INSERT INTO users (tag, name, address, phone, time_in, purpose, who, time_out, date, picture) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (normalized_tag, name, address, phone, time_in, purpose, who, time_out, date, picture_data)
                     )
                 conn.commit()
             self.clear()
@@ -311,7 +321,9 @@ class MainWindow(QMainWindow):
         self.tag.clear()
         self.name.clear()
         self.address.clear()
+        self.phone.clear()
         self.purpose.clear()
+        self.who_to_meet.clear()
         self.timeout.clear()
         self.date.clear()
 
@@ -360,12 +372,14 @@ class MainWindow(QMainWindow):
                         self.tag.setText(str(record[1] or ""))
                         self.name.setText(str(record[2] or ""))
                         self.address.setText(str(record[3] or ""))
-                        self.purpose.setText(str(record[4] or ""))
-                        self.timeout.setText(str(record[6] or ""))
-                        self.date.setText(str(record[7] or ""))
-                        if record[8]:
+                        self.phone.setText(str(record[4] or ""))
+                        self.purpose.setText(str(record[5] or ""))
+                        self.who_to_meet.setText(str(record[6] or ""))
+                        self.timeout.setText(str(record[8] or ""))
+                        self.date.setText(str(record[9] or ""))
+                        if record[10]:
                             pixmap = QPixmap()
-                            pixmap.loadFromData(record[8])
+                            pixmap.loadFromData(record[10])
                             self.picture.setPixmap(pixmap.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
                         else:
                             path = os.path.join(self.images_dir, "profile.jpg")
@@ -386,7 +400,7 @@ class MainWindow(QMainWindow):
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT tag, name, address, purpose, time_in, time_out, date, picture FROM users")
+                cursor.execute("SELECT tag, name, address, phone, purpose, who, time_in, time_out, date, picture FROM users")
                 info = cursor.fetchall()
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to read records:\n{e}")
@@ -396,9 +410,9 @@ class MainWindow(QMainWindow):
             if type_of == "csv":
                 with open(file_path, "w", encoding="utf-8", newline='') as e:
                     writer = csv.writer(e)
-                    writer.writerow(["tag", "name", "address", "purpose", "time_in", "time_out", "date"])
+                    writer.writerow(["tag", "name", "address", "phone", "purpose", "who_to_meet", "time_in", "time_out", "date"])
                     for row in info:
-                        writer.writerow(row[:7])
+                        writer.writerow(row[1:-1])
             elif type_of == "html":
                 with open(file_path, "w", encoding="utf-8") as e:
                     e.write("""
@@ -423,7 +437,9 @@ class MainWindow(QMainWindow):
                 <th>Tag</th>
                 <th>Name</th>
                 <th>Address</th>
+                <th>Phone number</th>
                 <th>Purpose</th>
+                <th>Who to meet</th>
                 <th>Time In</th>
                 <th>Time Out</th>
                 <th>Date</th>
@@ -433,7 +449,7 @@ class MainWindow(QMainWindow):
         <tbody>
 """)
                     for row in info:
-                        tag, name, address, purpose, time_in, time_out, date, picture = row
+                        tag, name, address, phone, purpose, who, time_in, time_out, date, picture = row
                         if picture:
                             img_data = base64.b64encode(picture).decode("utf-8")
                             img_tag = f'<img src="data:image/jpeg;base64,{img_data}">'
@@ -445,7 +461,9 @@ class MainWindow(QMainWindow):
                 <td>{tag or ''}</td>
                 <td>{name or ''}</td>
                 <td>{address or ''}</td>
+                <td>{phone or ''}</td>
                 <td>{purpose or ''}</td>
+                <td>{who or ''}</td>
                 <td>{time_in or ''}</td>
                 <td>{time_out or ''}</td>
                 <td>{date or ''}</td>
@@ -457,11 +475,11 @@ class MainWindow(QMainWindow):
     </table>
 </body>
 </html>
-""")        
+""")
             elif type_of == "pdf":
                 file_path = os.path.join(os.path.expanduser("~"), "Documents", "access_records.pdf")
 
-                doc = SimpleDocTemplate(file_path, pagesize=A4)
+                doc = SimpleDocTemplate(file_path, pagesize=A3)
                 styles = getSampleStyleSheet()
                 story = []
 
@@ -470,10 +488,10 @@ class MainWindow(QMainWindow):
                 story.append(Spacer(1, 0.3 * inch))
 
                 # Header row (with picture column)
-                data = [["Tag", "Name", "Address", "Purpose", "Time In", "Time Out", "Date", "Picture"]]
+                data = [["Tag", "Name", "Address", "Phone Number", "Purpose", "Who to Meet", "Time In", "Time Out", "Date", "Picture"]]
 
                 for row in info:
-                    tag, name, address, purpose, time_in, time_out, date, picture = row
+                    tag, name, address, phone, purpose, who_to_meet, time_in, time_out, date, picture = row
 
                     # Default placeholder if no image
                     if picture:
@@ -490,8 +508,8 @@ class MainWindow(QMainWindow):
                     else:
                         img = Paragraph("<font color='grey'>No Image</font>", styles["BodyText"])
 
-                    data.append([tag or "", name or "", address or "", purpose or "",
-                                time_in or "", time_out or "", date or "", img])
+                    data.append([tag or "", name or "", address or "", phone or "", purpose or "",
+                                who_to_meet or "", time_in or "", time_out or "", date or "", img])
 
                 table = Table(data, repeatRows=1, colWidths=[0.6*inch, 1*inch, 1*inch, 1.3*inch,
                                                             0.8*inch, 0.8*inch, 0.8*inch, 0.9*inch])
@@ -540,7 +558,7 @@ class MainWindow(QMainWindow):
         if self.admin:
             dialog = QMainWindow(self)
             dialog.setWindowTitle("View Logs")
-            dialog.resize(self.width() + 300, self.height())
+            dialog.resize(self.width(), self.height()-30)
 
             menu = dialog.menuBar()
             file = menu.addMenu("File")
@@ -564,10 +582,10 @@ class MainWindow(QMainWindow):
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT tag, name, address, time_in, purpose, time_out, date FROM users ORDER BY date DESC, time_in DESC")
+                    "SELECT tag, name, address, phone, purpose, who, time_in, time_out, date FROM users ORDER BY date DESC, time_in DESC")
                 info = cursor.fetchall()
 
-                rows, columns = len(info), 7
+                rows, columns = len(info), 9
                 table.setRowCount(rows)
                 table.setColumnCount(columns)
                 table.setStyleSheet("background-color: rgb(200, 200, 200);")
@@ -579,7 +597,7 @@ class MainWindow(QMainWindow):
                         item.setFont(QFont("Consolas", 10))
                         table.setItem(row_idx, col_idx, item)
 
-                table.setHorizontalHeaderLabels(["Tag", "Name", "Address", "Time In", "Purpose", "Time Out", "Date"])
+                table.setHorizontalHeaderLabels(["Tag", "Name", "Address", "Phone Number", "Purpose", "Who to meet", "Time In",  "Time Out", "Date"])
                 header = table.horizontalHeader()
                 header.setSectionResizeMode(QHeaderView.Stretch)
 
@@ -809,7 +827,6 @@ class MainWindow(QMainWindow):
     def initUI(self):
         window = QWidget()
         vbox = QVBoxLayout()
-        vbox.setContentsMargins(12, 12, 12, 12)
 
         # Title + logo
         hbox = QHBoxLayout()
@@ -828,13 +845,13 @@ class MainWindow(QMainWindow):
         # Menu
         menu = self.menuBar()
         file = menu.addMenu("File")
-        save = QAction("Save Record", self);
+        save = QAction("Save Record", self)
         save.setShortcut("Ctrl+S")
-        load = QAction("Load Record", self);
+        load = QAction("Load Record", self)
         load.setShortcut("Ctrl+L")
-        toggle = QAction("Toggle Theme", self);
+        toggle = QAction("Toggle Theme", self)
         toggle.setShortcut("Ctrl+T")
-        view = QAction("View Table", self);
+        view = QAction("View Table", self)
         view.setShortcut("Ctrl+V")
         settings_action = QAction("Sign In / Admin Manager", self)
         logout_action = QAction("Logout", self)
@@ -857,11 +874,14 @@ class MainWindow(QMainWindow):
         self.form_frame.setObjectName("form_frame")
 
         form = QFormLayout()
+        form.setSpacing(10)
 
         self.tag = QLineEdit()
         self.name = QLineEdit()
         self.address = QLineEdit()
         self.purpose = QTextEdit()
+        self.who_to_meet = QLineEdit()
+        self.phone = QLineEdit()
         self.timeout = QLineEdit()
         self.date = QLineEdit()
         self.picture = QLabel()
@@ -870,6 +890,8 @@ class MainWindow(QMainWindow):
         self.name.setPlaceholderText("Emmanuel Eze")
         self.address.setPlaceholderText("Gwarinpa")
         self.purpose.setPlaceholderText("To Code")
+        self.who_to_meet.setPlaceholderText("The manager")
+        self.phone.setPlaceholderText("09123456789")
         self.picture.setStyleSheet("border: 3px solid blue; border-radius:10px")
 
         self.get_time_btn2 = QPushButton("⏱")
@@ -886,7 +908,7 @@ class MainWindow(QMainWindow):
         picture_hbox.setAlignment(Qt.AlignCenter)
         profile_path = os.path.join(self.images_dir, "profile.jpg")
         if os.path.exists(profile_path):
-            self.picture.setPixmap(QPixmap(profile_path).scaled(100, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.picture.setPixmap(QPixmap(profile_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         picture_hbox.addWidget(self.picture)
 
         change_btn = QPushButton("Change Photo")
@@ -902,23 +924,41 @@ class MainWindow(QMainWindow):
         self.date_hbox.addWidget(self.date_btn)
 
         form.addRow(picture_hbox)
-        form.addRow("Tag:", self.tag)
-        form.addRow("Name:", self.name)
-        form.addRow("Address:", self.address)
+        form_hbox = QHBoxLayout()
+
+        form.addRow(QLabel(""))
+
+        # ---first column---
+        first_col = QFormLayout()
+        first_col.addRow("Tag:", self.tag)
+        first_col.addRow("Name:", self.name)
+        first_col.addRow("Address:", self.address)
+
+        # -----second column-----
+        second_col = QFormLayout()
+        second_col.addRow("Phone number:", self.phone)
+        second_col.addRow("Time out:", self.time_out_hbox)
+        second_col.addRow("Date:", self.date_hbox)
+
+        form_hbox.addLayout(first_col)
+        form_hbox.addSpacing(50)
+        form_hbox.addLayout(second_col)
+
+        form.addRow(form_hbox)
+        form.addRow("Who to meet:", self.who_to_meet)
         form.addRow("Purpose:", self.purpose)
-        form.addRow("Time out:", self.time_out_hbox)
-        form.addRow("Date:", self.date_hbox)
+
+        btn = QPushButton("Submit")
+        btn.clicked.connect(self.save_record)
+        btn.setFont(QFont("Segeo UI", 13, QFont.Bold))
+
+        btn.setFixedWidth(300)
+        form.addRow(btn)
 
         self.form_frame.setLayout(form)
         vbox.addWidget(self.form_frame)
         window.setLayout(vbox)
         self.setCentralWidget(window)
-
-    def resizeEvent(self, a0):
-        self.setGeometry(self.app_size.width() // 2 - self.width() // 2,
-                         self.app_size.height() // 2 - self.height() // 2, self.width(), self.height())
-
-        return super().resizeEvent(a0)
 
     # ------------------------------
     # Themes
@@ -957,6 +997,6 @@ class MainWindow(QMainWindow):
 # ------------------------------
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MainWindow(app.primaryScreen().size())
+    window = MainWindow()
     window.show()
     sys.exit(app.exec_())
