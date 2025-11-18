@@ -198,7 +198,7 @@ class MainWindow(QMainWindow):
         self.cap = None
         self.cam_timer = None
         self.current_camera_index = None
-        self.admin = True
+        self.admin = False
 
     # ------------------------------
     # Database and Utility
