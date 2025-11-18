@@ -406,9 +406,9 @@ class MainWindow(QMainWindow):
                     for row in info:
                         writer.writerow(row[1:-1])
             elif type_of == "html":
-                os.system(f'html_converter.py "{file_path}" "{info}"')
+                os.system(f'html_converter.exe "{file_path}" "{info}"')
             elif type_of == "pdf":
-                os.system(f'pdf_converter.py "{file_path}" "{info}"')
+                os.system(f'pdf_converter.exe "{file_path}" "{info}"')
 
             else:
                 QMessageBox.warning(self, "Unknown type", f"Unknown export type: {type_of}")
