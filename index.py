@@ -10,6 +10,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.units import inch
 from io import BytesIO
 from PIL import Image as PILImage
+import PyQt5
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap, QImage, QFont, QIcon
 import sys
@@ -996,7 +997,19 @@ class MainWindow(QMainWindow):
 # Run App
 # ------------------------------
 if __name__ == "__main__":
+    import PyQt5.QtCore as QtCore
+    from PyQt5.QtGui import QFont
+
+    # Enable scaling
+    QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+    QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+    QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_Use96Dpi, False)
+
     app = QApplication(sys.argv)
+
+    # Set global readable font
+    app.setFont(QFont("Segoe UI", 11))
+
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
