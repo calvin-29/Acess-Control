@@ -1,7 +1,8 @@
 from PyQt5.QtWidgets import (
     QLabel, QMainWindow, QPushButton, QApplication, QFormLayout, QVBoxLayout,
     QHBoxLayout, QWidget, QLineEdit, QMessageBox, QDialog, QFrame, QAction, QTextEdit,
-    QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QListWidget, QInputDialog
+    QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QListWidget, QInputDialog,
+    QStackedWidget, QListWidgetItem, QGridLayout, QSizePolicy
 )
 from reportlab.lib.pagesizes import A3
 from reportlab.lib import colors
@@ -10,8 +11,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.units import inch
 from io import BytesIO
 from PIL import Image as PILImage
-import PyQt5
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QSize
 from PyQt5.QtGui import QPixmap, QImage, QFont, QIcon
 import sys
 import datetime
@@ -21,6 +21,7 @@ import cv2
 import csv
 import hashlib
 import base64
+import json
 
 def list_available_cameras(max_index_to_check=6):
     available_cameras = []
@@ -38,7 +39,7 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 def get_appdata_dir():
-    COMPANY, APP_NAME = "CruzTech", "Access_Control"
+    COMPANY, APP_NAME = "CruzTech", "Visitor_Log"
     if sys.platform.startswith("win"):
         local = os.getenv("APPDATA")
         if local:
@@ -105,7 +106,6 @@ class AdminManager(QDialog):
     Only available to signed-in admins.
     """
 
-    # noinspection PyUnresolvedReferences
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
@@ -194,6 +194,21 @@ class MainWindow(QMainWindow):
         appdata = get_appdata_dir()
         self.db_path = os.path.join(appdata, "my_db.db")
         self.images_dir = "images"
+        self.config = os.path.join(appdata, "config.json")
+        self.config_data = {
+            "dark_mode": True,
+            "camera": 0
+        }
+        try:
+            if not os.path.exists(self.config):
+                with open(self.config, "w") as f:
+                    json.dump(self.config_data, f)
+            else:
+                with open(self.config, "r") as f:
+                    self.config_data = json.load(f)
+        except Exception as e:
+            QMessageBox.critical(self, "Loading Error", str(e))
+        print(self.config_data)
 
         icon_path = os.path.join(self.images_dir, "logo.png")
         if os.path.exists(icon_path):
@@ -201,7 +216,10 @@ class MainWindow(QMainWindow):
 
         self.create_database()
         self.initUI()
-        self.set_dark_theme()
+        if self.config_data["dark_mode"]:
+            self.set_dark_theme()
+        else:
+            self.set_light_theme()
 
         # camera & session state
         self.cap = None
@@ -247,7 +265,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Database Error", f"Failed to create database:\n{e}")
 
-    def get_current_time(self, mode=None):
+    def get_current_time(self):
         current_time = datetime.datetime.now().strftime("%H:%M:%S")
         self.timeout.setText(current_time)
         self.statusBar().showMessage("Time updated", 2000)
@@ -256,6 +274,13 @@ class MainWindow(QMainWindow):
         current_date = datetime.datetime.now().strftime("%d/%m/%Y")
         self.date.setText(current_date)
         self.statusBar().showMessage("Date updated", 2000)
+    
+    def save(self):
+        try:
+            with open(self.config, "w") as f:
+                json.dump(self.config_data, f)
+        except Exception as e:
+            QMessageBox.critical(self, "Saving Error", str(e))
 
     def toggle_theme(self):
         if self.dark_mode:
@@ -264,6 +289,8 @@ class MainWindow(QMainWindow):
         else:
             self.dark_mode = True
             self.set_dark_theme()
+        self.config_data["dark_mode"] = self.dark_mode
+        self.save()
 
     def save_record(self):
         tag = self.tag.text().strip()
@@ -397,6 +424,7 @@ class MainWindow(QMainWindow):
         dialog.exec_()
 
     def export(self, type_of):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
         file_path = os.path.join(os.path.expanduser("~"), "Documents", f"access_records.{type_of}")
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -554,6 +582,7 @@ class MainWindow(QMainWindow):
             msgbox.exec_()
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export:\n{e}")
+        QApplication.restoreOverrideCursor()
 
     def view(self):
         if self.admin:
@@ -670,6 +699,41 @@ class MainWindow(QMainWindow):
         else:
             # fallback
             self.settings()
+    
+    def toolbtnpressed(self, a):
+        if a.text() == "Save":
+            self.save_record()
+        elif a.text() == "Load":
+            self.load_record()
+        elif a.text() == "Register":
+            self.stack.setCurrentIndex(1)
+        elif a.text() == "Export":
+            if self.admin:
+                export = QDialog(self)
+                export.setWindowTitle("Export Data")
+                export.setFixedSize(300, 100)
+                hbox = QHBoxLayout()
+                for i in ["CSV", "HTML", "PDF"]:
+                    btn = QPushButton(i)
+                    btn.clicked.connect(lambda f=i: self.export(i.lower()))
+                    hbox.addWidget(btn)
+                hbox.setSpacing(5)
+                export.setLayout(hbox)
+                export.exec_()
+            else:
+                msgbox = QMessageBox(self)
+                msgbox.setWindowTitle("Sign In")
+                msgbox.setText("You are not currently the admin. Would you like to sign in?")
+                yes_btn = msgbox.addButton("Yes", QMessageBox.ActionRole)
+                no_btn = msgbox.addButton("No", QMessageBox.ActionRole)
+
+                yes_btn.clicked.connect(lambda: self.settings())
+                no_btn.clicked.connect(lambda: msgbox.close())
+                msgbox.exec_()
+        elif a.text() == "Sign In":
+            self.settings()
+        else:
+            self.open_admin_manager()
 
     # ------------------------------
     # Camera Integration (with face detection)
@@ -682,18 +746,25 @@ class MainWindow(QMainWindow):
         self.open_camera_dialog(index)
 
     def open_camera_dialog(self, index: int = 0):
+        self.config_data["camera"] = index
+        self.save()
+
         self.cam_dialog = QDialog(self)
         self.cam_dialog.setWindowTitle("Camera - Snap Profile Photo")
         self.cam_dialog.setFixedSize(520, 420)
         layout = QVBoxLayout(self.cam_dialog)
 
         self.cam_label = QLabel()
-        self.cam_label.setFixedSize(480, 320)
+        self.cam_label.setFixedSize(500, 320)
         self.cam_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.cam_label)
 
         btn_hbox = QHBoxLayout()
-        snap_btn = QPushButton("Snap")
+        snap_icon = os.path.join(self.images_dir, "camera.svg")
+        snap_btn = QPushButton()
+        snap_btn.setIconSize(QSize(24, 24))
+        if os.path.exists(snap_icon):
+            snap_btn.setIcon(QIcon(snap_icon))
         self.combo = QComboBox()
 
         cam_items = [str(i) for i in available_cameras] if available_cameras else ["0"]
@@ -705,7 +776,11 @@ class MainWindow(QMainWindow):
         self.combo.setCurrentIndex(index)
         self.combo.currentIndexChanged[int].connect(self.change_camera)
 
-        close_btn = QPushButton("Close")
+        cancel_icon = os.path.join(self.images_dir, "cancel.svg")
+        close_btn = QPushButton()
+        close_btn.setIconSize(QSize(24, 24))
+        if os.path.exists(cancel_icon):
+            close_btn.setIcon(QIcon(cancel_icon))
         btn_hbox.addWidget(snap_btn)
         btn_hbox.addWidget(self.combo)
         btn_hbox.addWidget(close_btn)
@@ -721,7 +796,6 @@ class MainWindow(QMainWindow):
             cam_index = 0
 
         api_preference = cv2.CAP_DSHOW if sys.platform.startswith("win") else 0
-        self.close_camera_dialog()
         self.cap = cv2.VideoCapture(cam_index, api_preference)
         if not self.cap or not self.cap.isOpened():
             QMessageBox.critical(self, "Camera Error", f"Unable to access the camera (index {cam_index}).")
@@ -760,41 +834,47 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-            face_cascade = cv2.CascadeClassifier(cascade_path)
-            faces = face_cascade.detectMultiScale(gray, 1.3, 5)
-
-            if len(faces) > 0:
-                # pick the largest face (best guess)
-                faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
-                (x, y, w, h) = faces[0]
-                # expand bounding box slightly but stay within image
-                pad = int(0.15 * max(w, h))
-                x0 = max(0, x - pad)
-                y0 = max(0, y - pad)
-                x1 = min(frame.shape[1], x + w + pad)
-                y1 = min(frame.shape[0], y + h + pad)
-                face_crop = frame[y0:y1, x0:x1]
-            else:
-                # fallback: center crop area
-                h_f, w_f = frame.shape[:2]
-                min_side = min(h_f, w_f)
-                cx, cy = w_f // 2, h_f // 2
-                half = min_side // 3
-                face_crop = frame[max(0, cy - half):min(h_f, cy + half), max(0, cx - half):min(w_f, cx + half)]
-
-            face_crop = cv2.resize(cv2.flip(face_crop, 1), (200, 200))
+            face_crop = cv2.resize(cv2.flip(frame, 1), (200, 200))
             profile_path = os.path.join(self.images_dir, "temp.jpg")
             cv2.imwrite(profile_path, face_crop)
 
-            pixmap = QPixmap(profile_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.picture.setPixmap(pixmap)
-            QMessageBox.information(self, "Saved", "Profile picture updated.")
-            self.statusBar().showMessage("Profile picture updated", 2000)
+            check = QDialog(self)
+            check.setWindowTitle("Is the pic good")
+
+            vbox = QVBoxLayout()
+            pixmap = QPixmap(profile_path).scaled(350, 270, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            lbl = QLabel(pixmap=pixmap)
+            vbox.addWidget(lbl)
+
+            def accept():
+                pixmap = QPixmap(profile_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self.picture.setPixmap(pixmap)
+                QMessageBox.information(self, "Saved", "Profile picture updated.")
+                check.close()
+                self.close_camera_dialog()
+                self.statusBar().showMessage("Profile picture updated", 2000)
+            def reject():
+                check.close()
+
+            hbox = QHBoxLayout()
+
+            good_icon = os.path.join(self.images_dir, "check.svg")
+            good = QPushButton(icon=QIcon(good_icon), text="")
+            good.clicked.connect(accept)
+            good.setToolTip("Accept")
+            hbox.addWidget(good)
+
+            bad_icon = os.path.join(self.images_dir, "x.svg")
+            bad = QPushButton(icon=QIcon(bad_icon), text="")
+            bad.clicked.connect(reject)
+            bad.setToolTip("Retake")
+            hbox.addWidget(bad)
+            
+            vbox.addLayout(hbox)
+            check.setLayout(vbox)
+            check.exec_()
         except Exception as e:
             QMessageBox.critical(self, "Capture Error", f"Failed to save captured image:\n{e}")
-        finally:
             self.close_camera_dialog()
 
     def close_camera_dialog(self):
@@ -821,6 +901,143 @@ class MainWindow(QMainWindow):
             pass
         self.cap = None
         self.cam_timer = None
+    
+    def form(self):
+        self.form_frame = QFrame()
+        self.form_frame.setObjectName("form_frame")
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        self.tag = QLineEdit()
+        self.name = QLineEdit()
+        self.address = QLineEdit()
+        self.purpose = QTextEdit()
+        self.who_to_meet = QLineEdit()
+        self.phone = QLineEdit()
+        self.timeout = QLineEdit()
+        self.date = QLineEdit()
+        self.picture = QLabel()
+
+        self.tag.setPlaceholderText("001")
+        self.name.setPlaceholderText("Emmanuel Eze")
+        self.address.setPlaceholderText("Gwarinpa")
+        self.purpose.setPlaceholderText("To Code")
+        self.who_to_meet.setPlaceholderText("The manager")
+        self.phone.setPlaceholderText("09123456789")
+        self.picture.setStyleSheet("border: 3px solid blue; border-radius:10px")
+
+        self.get_time_btn2 = QPushButton("⏱")
+        self.get_time_btn2.setToolTip("Set current time")
+        self.get_time_btn2.clicked.connect(lambda: self.get_current_time(2))
+        self.date_btn = QPushButton("📅")
+        self.date_btn.setToolTip("Set current date")
+        self.date_btn.clicked.connect(self.get_current_date)
+
+        self.timeout.setReadOnly(True)
+        self.date.setReadOnly(True)
+
+        picture_hbox = QHBoxLayout()
+        picture_hbox.setAlignment(Qt.AlignCenter)
+        profile_path = os.path.join(self.images_dir, "profile.jpg")
+        if os.path.exists(profile_path):
+            self.picture.setPixmap(QPixmap(profile_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        picture_hbox.addWidget(self.picture)
+
+        icon_path = os.path.join(self.images_dir, "camera.svg")
+        change_btn = QPushButton(" Change Photo")
+        if os.path.exists(icon_path):
+            change_btn.setIcon(QIcon(QPixmap(icon_path).scaled(32, 32)))
+        change_btn.clicked.connect(lambda: self.open_camera_dialog(self.config_data["camera"] if self.config_data["camera"] in available_cameras else 0))
+        picture_hbox.addWidget(change_btn)
+
+        self.time_out_hbox = QHBoxLayout()
+        self.time_out_hbox.addWidget(self.timeout)
+        self.time_out_hbox.addWidget(self.get_time_btn2)
+
+        self.date_hbox = QHBoxLayout()
+        self.date_hbox.addWidget(self.date)
+        self.date_hbox.addWidget(self.date_btn)
+
+        form.addRow(picture_hbox)
+        form_hbox = QHBoxLayout()
+
+        form.addRow(QLabel(""))
+
+        # ---first column---
+        first_col = QFormLayout()
+        first_col.addRow("Tag:", self.tag)
+        first_col.addRow("Name:", self.name)
+        first_col.addRow("Address:", self.address)
+
+        # -----second column-----
+        second_col = QFormLayout()
+        second_col.addRow("Phone number:", self.phone)
+        second_col.addRow("Time out:", self.time_out_hbox)
+        second_col.addRow("Date:", self.date_hbox)
+
+        form_hbox.addLayout(first_col)
+        form_hbox.addSpacing(50)
+        form_hbox.addLayout(second_col)
+
+        form.addRow(form_hbox)
+        form.addRow("Who to meet:", self.who_to_meet)
+        form.addRow("Purpose:", self.purpose)
+
+        btn = QPushButton("Submit")
+        btn.clicked.connect(self.save_record)
+        btn.setFont(QFont("Segeo UI", 13, QFont.Bold))
+
+        btn.setFixedWidth(300)
+        form.addRow(btn)
+
+        self.form_frame.setLayout(form)
+        return self.form_frame
+    
+    def dashboard(self):
+        frame = QFrame()
+        frame.setObjectName("form_frame")
+
+        vbox = QVBoxLayout(frame)
+        with sqlite3.connect(self.db_path) as db:
+            cursor = db.cursor()
+            current_date = datetime.datetime.now().strftime("%d/%m/%Y")
+            conn = cursor.execute("SELECT id, picture, tag, name, address, phone, time_out FROM users WHERE date = ?", (current_date,))
+            info = conn.fetchall()
+            if info:
+                font = QFont("Segeo UI", italic=True, weight=800)
+                lb = QLabel("Visitors Today")
+                lb.setFont(font)
+                vbox.addWidget(lb, alignment=Qt.AlignCenter)
+                list_of_visitors = QGridLayout()
+                for count, i in enumerate(["No", "Picture", "Tag", "Name", "Address", "Phone", "Status"]):
+                    lbl = QLabel(text=i, alignment=Qt.AlignCenter)
+                    lbl.setStyleSheet("font-weight: 500;border: 1px solid white;")
+                    list_of_visitors.addWidget(lbl, 0, count)
+                for c, j in enumerate(info, start=1):
+                    for d, k in enumerate(j):
+                        lbl = QLabel(text=str(k), alignment=Qt.AlignCenter)
+                        list_of_visitors.addWidget(lbl, c, d)
+                        if d==6:
+                            if j[6] != "":
+                                lbl.setText("Active")
+                            else:
+                                lbl.setText("Not Active")
+                        if d==1:
+                            pix = QPixmap()
+                            pix.loadFromData(k)
+                            lbl.setPixmap(pix)
+                            lbl.setText("")
+                            lbl.setFixedSize(100, 100)
+                vbox.addLayout(list_of_visitors)
+            else:
+                vbox.addWidget(QLabel("No Visitors Today"), alignment=Qt.AlignCenter)
+                btn = QPushButton("Register")
+                btn.setFixedWidth(200)
+                btn.clicked.connect(lambda: self.stack.setCurrentIndex(1))
+                vbox.addWidget(btn)
+            vbox.setAlignment(Qt.AlignTop)
+        return frame
 
     # ------------------------------
     # UI Setup
@@ -871,93 +1088,78 @@ class MainWindow(QMainWindow):
         edit.addAction("Clear Timeout")
         edit.triggered.connect(self.menu_commands)
 
-        self.form_frame = QFrame()
-        self.form_frame.setObjectName("form_frame")
+        # toolbar for quick access to commands
+        tb = self.addToolBar("File")
+        tb.setIconSize(QSize(30, 30))
+        tb.setMovable(False)
 
-        form = QFormLayout()
-        form.setSpacing(10)
+        def give_space():
+            space = QWidget()
+            space.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            return space
+    
+        tb.addWidget(give_space())
+        save_icon = os.path.join(self.images_dir, "save.svg")
+        save = QAction("Save",self)
+        if os.path.exists(save_icon):
+            save.setIcon(QIcon(save_icon))
+        tb.addAction(save)
 
-        self.tag = QLineEdit()
-        self.name = QLineEdit()
-        self.address = QLineEdit()
-        self.purpose = QTextEdit()
-        self.who_to_meet = QLineEdit()
-        self.phone = QLineEdit()
-        self.timeout = QLineEdit()
-        self.date = QLineEdit()
-        self.picture = QLabel()
+        tb.addWidget(give_space())
+        load_icon = os.path.join(self.images_dir, "folder-open.svg")
+        load = QAction("Load",self)
+        if os.path.exists(load_icon):
+            load.setIcon(QIcon(load_icon))
+        tb.addAction(load)
 
-        self.tag.setPlaceholderText("001")
-        self.name.setPlaceholderText("Emmanuel Eze")
-        self.address.setPlaceholderText("Gwarinpa")
-        self.purpose.setPlaceholderText("To Code")
-        self.who_to_meet.setPlaceholderText("The manager")
-        self.phone.setPlaceholderText("09123456789")
-        self.picture.setStyleSheet("border: 3px solid blue; border-radius:10px")
+        tb.addWidget(give_space())
+        register_icon = os.path.join(self.images_dir, "cash-register.svg")
+        reg = QAction("Register",self)
+        if os.path.exists(register_icon):
+            reg.setIcon(QIcon(register_icon))
+        tb.addAction(reg)
+        
+        tb.addWidget(give_space())
+        export_icon = os.path.join(self.images_dir, "file-export.svg")
+        export = QAction("Export",self)
+        if os.path.exists(export_icon):
+            export.setIcon(QIcon(export_icon))
+        tb.addAction(export)
 
-        self.get_time_btn2 = QPushButton("⏱")
-        self.get_time_btn2.setToolTip("Set current time")
-        self.get_time_btn2.clicked.connect(lambda: self.get_current_time(2))
-        self.date_btn = QPushButton("📅")
-        self.date_btn.setToolTip("Set current date")
-        self.date_btn.clicked.connect(self.get_current_date)
+        tb.addWidget(give_space())
+        sign_icon = os.path.join(self.images_dir, "user-circle.svg")
+        sign = QAction("Sign In",self)
+        if os.path.exists(sign_icon):
+            sign.setIcon(QIcon(sign_icon))
+        tb.addAction(sign)
 
-        self.timeout.setReadOnly(True)
-        self.date.setReadOnly(True)
+        tb.addWidget(give_space())
+        tb.actionTriggered[QAction].connect(self.toolbtnpressed)
+    
+        #list widget to manage display
+        windows = QListWidget()
+        windows.setFixedWidth(200)
 
-        picture_hbox = QHBoxLayout()
-        picture_hbox.setAlignment(Qt.AlignCenter)
-        profile_path = os.path.join(self.images_dir, "profile.jpg")
-        if os.path.exists(profile_path):
-            self.picture.setPixmap(QPixmap(profile_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        picture_hbox.addWidget(self.picture)
+        for count, (i, j) in enumerate((("Dashboard", "bar-chart.svg"), ("Form", "file-alt.svg"))):
+            img = os.path.join(self.images_dir, j)
+            item = QListWidgetItem(i)
+            if os.path.exists(img):
+                item.setIcon(QIcon(QPixmap(img).scaled(32, 32)))
+            windows.insertItem(count, item)
+        windows.currentRowChanged.connect(lambda e: self.stack.setCurrentIndex(e))
+        windows.itemClicked.connect(lambda e: self.stack.setCurrentIndex(0 if e.text() == "Dashboard" else 1))
 
-        change_btn = QPushButton("Change Photo")
-        change_btn.clicked.connect(lambda: self.open_camera_dialog(0))
-        picture_hbox.addWidget(change_btn)
+        # stacked widget for the form and the dashboard
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.dashboard())
+        self.stack.addWidget(self.form())
 
-        self.time_out_hbox = QHBoxLayout()
-        self.time_out_hbox.addWidget(self.timeout)
-        self.time_out_hbox.addWidget(self.get_time_btn2)
+        # hbox to manage list and stacked
+        main_hbox = QHBoxLayout()
+        main_hbox.addWidget(windows)
+        main_hbox.addWidget(self.stack)
 
-        self.date_hbox = QHBoxLayout()
-        self.date_hbox.addWidget(self.date)
-        self.date_hbox.addWidget(self.date_btn)
-
-        form.addRow(picture_hbox)
-        form_hbox = QHBoxLayout()
-
-        form.addRow(QLabel(""))
-
-        # ---first column---
-        first_col = QFormLayout()
-        first_col.addRow("Tag:", self.tag)
-        first_col.addRow("Name:", self.name)
-        first_col.addRow("Address:", self.address)
-
-        # -----second column-----
-        second_col = QFormLayout()
-        second_col.addRow("Phone number:", self.phone)
-        second_col.addRow("Time out:", self.time_out_hbox)
-        second_col.addRow("Date:", self.date_hbox)
-
-        form_hbox.addLayout(first_col)
-        form_hbox.addSpacing(50)
-        form_hbox.addLayout(second_col)
-
-        form.addRow(form_hbox)
-        form.addRow("Who to meet:", self.who_to_meet)
-        form.addRow("Purpose:", self.purpose)
-
-        btn = QPushButton("Submit")
-        btn.clicked.connect(self.save_record)
-        btn.setFont(QFont("Segeo UI", 13, QFont.Bold))
-
-        btn.setFixedWidth(300)
-        form.addRow(btn)
-
-        self.form_frame.setLayout(form)
-        vbox.addWidget(self.form_frame)
+        vbox.addLayout(main_hbox)
         window.setLayout(vbox)
         self.setCentralWidget(window)
 
@@ -973,9 +1175,11 @@ class MainWindow(QMainWindow):
             QPushButton{background-color:#0078d7;color:white;border-radius:8px;font-size:14px;padding:6px 10px;}
             QPushButton:hover{background-color:#005fa3;}
             QMenuBar, QMenu{background-color:#e9f2ff;color:#1E2832;font-size:13px}
-            QMenuBar::item::selected, QMenu::item::selected{background-color:#e9f2df;color:#1E2812;}
+            QMenuBar::item::selected, QMenu::item::selected{background-color:#e9e7df;color:#1E2912;}
             QComboBox{background-color:#0078d7;color:white;font-size:13px}
-            #form_frame{background-color:#ffffff;border-radius:10px;padding:16px;border:1px solid #e1e1e1;}
+            #form_frame, QListWidget{background-color:#ffffff;border-radius:10px;padding:16px;border:1px solid #e1e1e1;}
+            QListWidget{background-color:grey}
+            QListWidget::item{color: black;font-family:"Ink Free"}
         """)
 
     def set_dark_theme(self):
@@ -989,7 +1193,8 @@ class MainWindow(QMainWindow):
             QMenuBar, QMenu{background-color:#1E2832;color:#C8E1FA;font-size:15px}
             QMenuBar::item::selected, QMenu::item::selected{background-color:#1E2842;color:#C8E1EA}
             QComboBox{background-color:#0078d7;color:white;font-size:13px}
-            #form_frame{background-color:rgb(20, 20, 45);border-radius:10px;padding:16px;border:1px solid #333;}
+            #form_frame, QListWidget{background-color:rgb(20, 20, 45);border-radius:10px;padding:16px;border:1px solid #333;}
+            QListWidget::item{color: white;font-family:"Ink Free"}
         """)
 
 
