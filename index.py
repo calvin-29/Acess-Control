@@ -1048,7 +1048,7 @@ class MainWindow(QMainWindow):
 
         # Title + logo
         hbox = QHBoxLayout()
-        self.title = QLabel("Access Control System")
+        self.title = QLabel("Visitor Log")
         self.title.setFont(QFont("Segoe UI", 30, QFont.Bold))
         logo = QLabel()
         logo_path = os.path.join(self.images_dir, "logo.png")
