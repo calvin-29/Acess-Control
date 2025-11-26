@@ -929,7 +929,7 @@ class MainWindow(QMainWindow):
 
         self.get_time_btn2 = QPushButton("⏱")
         self.get_time_btn2.setToolTip("Set current time")
-        self.get_time_btn2.clicked.connect(lambda: self.get_current_time(2))
+        self.get_time_btn2.clicked.connect(self.get_current_time)
         self.date_btn = QPushButton("📅")
         self.date_btn.setToolTip("Set current date")
         self.date_btn.clicked.connect(self.get_current_date)
