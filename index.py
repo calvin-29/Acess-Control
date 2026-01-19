@@ -1,8 +1,8 @@
 from PyQt5.QtWidgets import (
-    QLabel, QMainWindow, QPushButton, QApplication, QFormLayout, QVBoxLayout,
-    QHBoxLayout, QWidget, QLineEdit, QMessageBox, QDialog, QFrame, QAction, QTextEdit,
-    QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QListWidget, QInputDialog,
-    QStackedWidget, QListWidgetItem, QGridLayout, QSizePolicy
+QLabel, QMainWindow, QPushButton, QApplication, QFormLayout, QVBoxLayout,
+QHBoxLayout, QWidget, QLineEdit, QMessageBox, QDialog, QFrame, QAction, QTextEdit,
+QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QListWidget, QInputDialog,
+QStackedWidget, QListWidgetItem, QGridLayout, QSizePolicy
 )
 from reportlab.lib.pagesizes import A3
 from reportlab.lib import colors
@@ -154,7 +154,7 @@ class AdminManager(QDialog):
             with sqlite3.connect(self.parent.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO admins (username, password) VALUES (?, ?)",
-                               (username.strip(), hash_password(password)))
+                            (username.strip(), hash_password(password)))
                 conn.commit()
             QMessageBox.information(self, "Added", f"Admin '{username}' added.")
             self.load_admins()
@@ -171,7 +171,7 @@ class AdminManager(QDialog):
         text = item.text()
         aid = int(text.split(":")[0])
         confirm = QMessageBox.question(self, "Confirm Delete", f"Delete admin '{text}'?",
-                                       QMessageBox.Yes | QMessageBox.No)
+                                    QMessageBox.Yes | QMessageBox.No)
         if confirm == QMessageBox.Yes:
             try:
                 with sqlite3.connect(self.parent.db_path) as conn:
@@ -260,7 +260,7 @@ class MainWindow(QMainWindow):
                 count = cursor.fetchone()[0]
                 if count == 0:
                     cursor.execute("INSERT OR IGNORE INTO admins (username, password) VALUES (?, ?)",
-                                   ("admin", hash_password("1234")))
+                                ("admin", hash_password("1234")))
                 conn.commit()
         except Exception as e:
             QMessageBox.critical(self, "Database Error", f"Failed to create database:\n{e}")
@@ -325,7 +325,7 @@ class MainWindow(QMainWindow):
 
                 if record:
                     reply = QMessageBox.question(self, "Confirm", f"Update profile for {name}?",
-                                                 QMessageBox.Yes | QMessageBox.No)
+                                                QMessageBox.Yes | QMessageBox.No)
                     if reply == QMessageBox.Yes:
                         cursor.execute(
                             "UPDATE users SET time_out=?, picture=? WHERE name=? AND date=?",
