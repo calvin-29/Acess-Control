@@ -920,11 +920,11 @@ class MainWindow(QMainWindow):
         self.picture = QLabel()
 
         self.tag.setPlaceholderText("001")
-        self.name.setPlaceholderText("Emmanuel Eze")
-        self.address.setPlaceholderText("Gwarinpa")
+        self.name.setPlaceholderText("Calvin Ugwoke")
+        self.address.setPlaceholderText("Dawaki")
         self.purpose.setPlaceholderText("To Code")
         self.who_to_meet.setPlaceholderText("The manager")
-        self.phone.setPlaceholderText("09123456789")
+        self.phone.setPlaceholderText("09061422818")
         self.picture.setStyleSheet("border: 3px solid blue; border-radius:10px")
 
         self.get_time_btn2 = QPushButton("⏱")
