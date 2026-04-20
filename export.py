@@ -16,6 +16,11 @@ import csv
 def exports(self, type_of):
     QApplication.setOverrideCursor(Qt.WaitCursor)
     file_path = os.path.join(os.path.expanduser("~"), "Documents", f"access_records.{type_of}")
+    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "logo.png")
+
+    with open(logo_path, "rb") as f:
+        logo_content = f.read()
+
     try:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -29,73 +34,60 @@ def exports(self, type_of):
         if type_of == "csv":
             with open(file_path, "w", encoding="utf-8", newline='') as e:
                 writer = csv.writer(e)
-                writer.writerow(["tag", "name", "address", "phone", "purpose", "who_to_meet", "time_in", "time_out", "date"])
+                writer.writerow(["tag", "name", "address", "phone", "purpose", "who_to_meet",
+                                  "time_in", "time_out", "date"])
                 for row in info:
                     writer.writerow(row[1:-1])
         elif type_of == "html":
             with open(file_path, "w", encoding="utf-8") as e:
-                e.write("""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Access Control Records</title>
-<style>
-    body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
-    table { border-collapse: collapse; width: 100%; background: white; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-    th { background-color: #0078d7; color: white; }
-    img { width: 80px; height: 80px; border-radius: 8px; object-fit: cover; }
-</style>
-</head>
-<body>
-<h2>Access Control Records</h2>
-<table>
-    <thead>
-        <tr>
-            <th>Tag</th>
-            <th>Name</th>
-            <th>Address</th>
-            <th>Phone number</th>
-            <th>Purpose</th>
-            <th>Who to meet</th>
-            <th>Time In</th>
-            <th>Time Out</th>
-            <th>Date</th>
-            <th>Picture</th>
-        </tr>
-    </thead>
-    <tbody>
-""")
-            for row in info:
-                tag, name, address, phone, purpose, who, time_in, time_out, date, picture = row
-                if picture:
+                e.write('<!DOCTYPE html>')
+                e.write('<html lang="en">')
+                e.write('<head>')
+                e.write('<meta charset="UTF-8">')
+                e.write('<title>Access Control Records</title>')
+                e.write('<style>')
+                e.write('  body{font-family:Verdana,Geneva,Tahoma,sans-serif; margin: 10px; background-color: #121212;}')
+                e.write('  div{color: #ffffff; display: flex; padding: 20px; gap: 20px}')
+                e.write('  th,td{border: 1px solid #ccc; padding: 8px; text-align: center;}')
+                e.write('  th{color: white; background-color: black}')
+                e.write('  table{width: 100%; background-color: white; border:1; cellpadding:5; cellspacing:0}')
+                e.write('  th:nth-child(1){width: 5%;}')
+                e.write('  th:nth-child(5){width: 15%;}')
+                e.write('  th:nth-child(2), th:nth-child(3), th:nth-child(4), th:nth-child(6),')
+                e.write('  th:nth-child(7), th:nth-child(8), th:nth-child(9), th:nth-child(10){width: 10%;}')
+                e.write('  img {width: 80px; height: 80px; border-radius: 8px;}')
+                e.write('  .data{height: 100px}')
+                e.write('</style>')
+                e.write('</head>')
+                e.write('<body>')
+                e.write('<div>')
+                e.write('  <img src="data:image/jpeg;base64,{base64.b64encode(logo_content).decode("utf-8")}">')
+                e.write('  <h2>Access Control Records</h2>')
+                e.write('</div>')
+                e.write('<table>')
+                e.write('  <tr>')
+                e.write('    <th>Tag</th>')
+                e.write('    <th>Name</th>')
+                e.write('    <th>Address</th>')
+                e.write('    <th>Phone number</th>')
+                e.write('    <th>Purpose</th>')
+                e.write('    <th>Who to meet</th>')
+                e.write('    <th>Time In</th>')
+                e.write('    <th>Time Out</th>')
+                e.write('    <th>Date</th>')
+                e.write('    <th>Picture</th>')
+                e.write('  </tr>')
+                for row in info:
+                    e.write("  <tr>")
                     img_data = base64.b64encode(picture).decode("utf-8")
-                    img_tag = f'<img src="data:image/jpeg;base64,{img_data}">'
-                else:
-                    img_tag = '<span style="color:#888;">No Image</span>'
-
-            e.write(f"""
-            <tr>
-                <td>{tag or ''}</td>
-                <td>{name or ''}</td>
-                <td>{address or ''}</td>
-                <td>{phone or ''}</td>
-                <td>{purpose or ''}</td>
-                <td>{who or ''}</td>
-                <td>{time_in or ''}</td>
-                <td>{time_out or ''}</td>
-                <td>{date or ''}</td>
-                <td>{img_tag}</td>
-            </tr>
-""")
-            e.write("""
-    </tbody>
-</table>
-</body>
-</html>
-""")
-
+                    img_tag = f'<img src="data:image/jpeg;base64,{img_data}"'
+                    for val in row[:-1]:
+                        e.write(f"    <td>{val or ''}</td>")
+                    e.write(f"    <td>{img_tag}</td>")
+                    e.write("  </tr>")
+                e.write('</table>')
+                e.write('</body>')
+                e.write('</html>')
         elif type_of == "pdf":
             doc = SimpleDocTemplate(file_path, pagesize=A3)
             styles = getSampleStyleSheet()
@@ -151,6 +143,8 @@ def exports(self, type_of):
             QMessageBox.warning(self, "Unknown type", f"Unknown export type: {type_of}")
             return
 
+        QApplication.restoreOverrideCursor()
+
         msgbox = QMessageBox(self)
         msgbox.setWindowTitle("File saved successfully")
         msgbox.setText(f"File is saved at {file_path}")
@@ -171,5 +165,5 @@ def exports(self, type_of):
         open_btn.clicked.connect(reveal)
         msgbox.exec_()
     except Exception as e:
+        os.remove(file_path)
         QMessageBox.critical(self, "Export Error", f"Failed to export:\n{e}")
-    QApplication.restoreOverrideCursor()

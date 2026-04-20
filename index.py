@@ -7,7 +7,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QFont, QIcon
 from theme import set_dark_theme, set_light_theme
 from admin import AdminLogin, AdminManager
-from ui import initUI
+from ui import UI
 from export import exports
 from camera import Camera
 import sys
@@ -76,7 +76,8 @@ class MainWindow(QMainWindow):
 
         self.create_database()
 
-        initUI(self, available_cameras)
+        self.ui = UI(self, available_cameras)
+        self.ui.initUI()
 
         if self.config_data["dark_mode"]:
             set_dark_theme(self)
@@ -98,7 +99,7 @@ class MainWindow(QMainWindow):
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS users (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        tag TEXT,
+                        tag TEXT UNIQUE,
                         name TEXT,
                         address TEXT,
                         phone TEXT,
@@ -203,8 +204,11 @@ class MainWindow(QMainWindow):
                     )
                 conn.commit()
             self.clear()
+            self.ui.dashboard()
             QMessageBox.information(self, "Success", "Record saved successfully!")
             self.statusBar().showMessage("Record saved", 3000)
+        except sqlite3.IntegrityError:
+            QMessageBox.critical(self, "DB Error", f"Tag '{tag}' has already been used")
         except Exception as e:
             QMessageBox.critical(self, "DB Error", f"Failed to save record:\n{e}")
 
@@ -295,9 +299,9 @@ class MainWindow(QMainWindow):
             menu = dialog.menuBar()
             file = menu.addMenu("File")
             export = file.addMenu("Export")
-            export.addAction("Export to csv").triggered.connect(lambda: export("csv"))
-            export.addAction("Export to html").triggered.connect(lambda: export("html"))
-            export.addAction("Export to pdf").triggered.connect(lambda: export("pdf"))
+            export.addAction("Export to csv").triggered.connect(lambda: exports(self, "csv"))
+            export.addAction("Export to html").triggered.connect(lambda: exports(self, "html"))
+            export.addAction("Export to pdf").triggered.connect(lambda: exports(self, "pdf"))
 
             win = QWidget()
             vbox = QVBoxLayout()
@@ -399,7 +403,6 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.information(self, "Info", "You are not logged in.")
         else:
-            # fallback
             self.settings()
     
     def toolbtnpressed(self, a, stack, list_):
@@ -411,14 +414,14 @@ class MainWindow(QMainWindow):
             stack.setCurrentIndex(1)
             list_.setCurrentRow(1)
         elif a.text() == "Export":
-            if self.admin:
+            if True:
                 export = QDialog(self)
                 export.setWindowTitle("Export Data")
                 export.setFixedSize(300, 100)
                 hbox = QHBoxLayout()
                 for i in ["CSV", "HTML", "PDF"]:
                     btn = QPushButton(i)
-                    btn.clicked.connect(lambda e, val=i: exports(val.lower()))
+                    btn.clicked.connect(lambda e, val=i: exports(self, val.lower()))
                     hbox.addWidget(btn)
                 hbox.setSpacing(10)
                 export.setLayout(hbox)
