@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (
     QLabel, QVBoxLayout, QHBoxLayout, QWidget, QAction, QGridLayout,
     QListWidget, QStackedWidget, QListWidgetItem, QSizePolicy,
-    QPushButton, QLineEdit, QFormLayout, QFrame, QTextEdit, QSpacerItem
+    QPushButton, QLineEdit, QFormLayout, QFrame, QTextEdit, QScrollArea
 )
 from PyQt5.QtGui import QFont, QPixmap, QIcon
 from PyQt5.QtCore import Qt, QSize
@@ -43,12 +43,12 @@ class UI():
         self.app.phone.setPlaceholderText("09061422818")
         self.app.picture.setStyleSheet("border: 3px solid blue; border-radius:10px")
 
-        get_time_btn2 = QPushButton("⏱")
-        get_time_btn2.setToolTip("Set current time")
-        get_time_btn2.clicked.connect(self.app.get_current_time)
-        date_btn = QPushButton("📅")
-        date_btn.setToolTip("Set current date")
-        date_btn.clicked.connect(self.app.get_current_date)
+        self.get_time_btn2 = QPushButton("⏱")
+        self.get_time_btn2.setToolTip("Set current time")
+        self.get_time_btn2.clicked.connect(self.app.get_current_time)
+        self.date_btn = QPushButton("📅")
+        self.date_btn.setToolTip("Set current date")
+        self.date_btn.clicked.connect(self.app.get_current_date)
 
         self.app.timeout.setReadOnly(True)
         self.app.date.setReadOnly(True)
@@ -70,11 +70,11 @@ class UI():
 
         time_out_hbox = QHBoxLayout()
         time_out_hbox.addWidget(self.app.timeout)
-        time_out_hbox.addWidget(get_time_btn2)
+        time_out_hbox.addWidget(self.get_time_btn2)
 
         date_hbox = QHBoxLayout()
         date_hbox.addWidget(self.app.date)
-        date_hbox.addWidget(date_btn)
+        date_hbox.addWidget(self.date_btn)
 
         form.addRow(picture_hbox)
         form_hbox = QHBoxLayout()
@@ -110,19 +110,36 @@ class UI():
 
         self.form_frame.setLayout(form)
         return self.form_frame
+
+    def change(self, num):
+        self.stack.setCurrentIndex(num)
+        self.windows.setCurrentRow(num)
     
+    def clear_layout(self, layout):
+        if layout is not None:
+            while layout.count():
+                item = layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+                elif item.layout() is not None:
+                    self.clear_layout(item.layout())
+
     def dashboard(self):
-        self.stack_frame = QFrame()
-        self.stack_frame.setObjectName("form_frame")
-
-        vbox = QVBoxLayout(self.stack_frame)
-
-        font = QFont("Segeo UI", italic=True, weight=800)
-        lb = QLabel("Visitors Today")
-        lb.setFont(font)
-        vbox.addWidget(lb, alignment=Qt.AlignCenter|Qt.AlignTop)
-
-        list_of_visitors = QGridLayout()
+        if not hasattr(self, 'stack_frame'):
+            self.scroll_area = QScrollArea()
+            self.scroll_area.setWidgetResizable(True)
+            self.scroll_area.setObjectName("form_frame")
+            self.stack_frame = QFrame()
+            self.stack_frame.setObjectName("form_frame")
+            self.vbox = QVBoxLayout(self.stack_frame)
+            self.list_of_visitors = QGridLayout()
+        else:
+           self.clear_layout(self.vbox)
+        
+        lb = QLabel()
+        lb.setStyleSheet("font-weight: 500;font-size: 25px")
+        self.vbox.addWidget(lb, alignment=Qt.AlignCenter)
 
         with sqlite3.connect(self.app.db_path) as db:
             cursor = db.cursor()
@@ -130,43 +147,40 @@ class UI():
             conn = cursor.execute("SELECT id, picture, tag, name, address, phone, time_out FROM users WHERE date = ?", (current_date,))
             info = conn.fetchall()
             if info:
+                lb.setText("Visitors Today")
                 for count, i in enumerate(["No", "Picture", "Tag", "Name", "Address", "Phone", "Status"]):
                     lbl = QLabel(text=i, alignment=Qt.AlignCenter)
                     lbl.setStyleSheet("font-weight: 500;border: 1px solid white;")
-                    list_of_visitors.addWidget(lbl, 0, count, alignment=Qt.AlignTop)
+                    self.list_of_visitors.addWidget(lbl, 0, count, alignment=Qt.AlignTop)
                 
-                for c, j in enumerate(info, start=1):
-                    for d, k in enumerate(j):
+                for row, j in enumerate(info, start=1):
+                    for col, k  in enumerate(j):
                         lbl = QLabel(text=str(k), alignment=Qt.AlignCenter)
-                        if d==6:
-                            if j[6] != "":
-                                lbl.setText("Active")
-                            else:
-                                lbl.setText("Not Active")
-                        if d==1:
+                        if col==6:
+                            lbl.setText("Active" if j[6] else "Not Active")
+                        if col==1:
                             pix = QPixmap()
-                            pix.loadFromData(k)
+                            if k:
+                                pix.loadFromData(k)
+                            else:
+                                pix = QPixmap(os.path.join(self.app.images_dir, "profile.jpg"))
+                            pix = pix.scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                             lbl.setPixmap(pix)
-                            lbl.setText("")
-                            lbl.setFixedSize(100, 100)
-                        list_of_visitors.addWidget(lbl, c, d, alignment=Qt.AlignTop)
-            else:
-                def change():
-                    self.stack.setCurrentIndex(1)
-                    self.list.setCurrentRow(1)
-                    
-                vbox.addWidget(QLabel("No Visitors Today"), alignment=Qt.AlignCenter)
+                        self.list_of_visitors.addWidget(lbl, row, col, alignment=Qt.AlignCenter)
+                self.vbox.addLayout(self.list_of_visitors)
+            else:                    
+                lb.setText("No Visitors Today")
                 btn = QPushButton("Register")
                 btn.setFixedWidth(200)
-                btn.clicked.connect(change)
-                vbox.addWidget(btn)
-                vbox.setAlignment(Qt.AlignTop)
+                btn.clicked.connect(lambda: self.change(1))
+                self.vbox.addWidget(btn, alignment=Qt.AlignCenter)
+                self.vbox.setAlignment(Qt.AlignTop)
         
+        self.change(0)
+        self.vbox.addStretch(1)
+        self.scroll_area.setWidget(self.stack_frame)
         
-        vbox.addLayout(list_of_visitors)
-        vbox.addStretch(1)
-        
-        return self.stack_frame
+        return self.scroll_area
 
     def initUI(self):
         window = QWidget()
@@ -273,8 +287,6 @@ class UI():
             if os.path.exists(img):
                 item.setIcon(QIcon(QPixmap(img).scaled(32, 32)))
             self.windows.insertItem(count, item)
-
-        self.windows.setCurrentRow(0)
 
         # stacked widget for the form and the dashboard
         self.stack = QStackedWidget()

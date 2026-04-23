@@ -9,7 +9,7 @@ import cv2
 import sys
 
 # ------------------------------
-# Camera Integration (with face detection)
+# Camera Integration
 # ------------------------------
 
 class Camera:

@@ -8,7 +8,7 @@ from PyQt5.QtGui import QPixmap, QFont, QIcon
 from theme import set_dark_theme, set_light_theme
 from admin import AdminLogin, AdminManager
 from ui import UI
-from export import exports
+from export import run_threaded_export
 from camera import Camera
 import sys
 import datetime
@@ -99,7 +99,7 @@ class MainWindow(QMainWindow):
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS users (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        tag TEXT UNIQUE,
+                        tag TEXT,
                         name TEXT,
                         address TEXT,
                         phone TEXT,
@@ -118,14 +118,22 @@ class MainWindow(QMainWindow):
                         password TEXT
                     )
                 """)
-                cursor.execute("SELECT COUNT(*) FROM admins")
-                count = cursor.fetchone()[0]
-                if count == 0:
-                    dialog = QMessageBox.question(self, "No admin", "No admin is detected. Would you like to add one",
-                                        QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No)
-                    if dialog == QMessageBox.StandardButton.Yes:
-                        admin = AdminManager(self)
-                        admin.add_admin()
+        except Exception as e:
+            QMessageBox.critical(self, "Database Error", f"Failed to create database:\n{e}")
+    
+    def check_admin(self):
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM admins")
+            count = cursor.fetchone()[0]
+            if count == 0:
+                dialog = QMessageBox.question(self, "No admin", "No admin is detected. Would you like to add one",
+                                    QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No)
+                if dialog == QMessageBox.StandardButton.Yes:
+                    admin = AdminManager(self)
+                    admin.add_admin()
+                self.admin = True
         except Exception as e:
             QMessageBox.critical(self, "Database Error", f"Failed to create database:\n{e}")
 
@@ -149,10 +157,10 @@ class MainWindow(QMainWindow):
     def toggle_theme(self):
         if self.dark_mode:
             self.dark_mode = False
-            self.set_light_theme()
+            set_light_theme()
         else:
             self.dark_mode = True
-            self.set_dark_theme()
+            set_dark_theme()
         self.config_data["dark_mode"] = self.dark_mode
         self.save()
 
@@ -180,6 +188,18 @@ class MainWindow(QMainWindow):
         if os.path.exists(profile_path):
             with open(profile_path, "rb") as f:
                 picture_data = f.read()
+        
+        normalized_tag = tag.rjust(3, '0') if tag else None
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT (tag) FROM users WHERE date=?', (date,))
+            r = cursor.fetchall()
+            if r:
+                tags = [i[0] for i in r]
+                if normalized_tag in tags:
+                    QMessageBox.critical(self, "DB Error", f"Tag has been registered today")
+                    return
 
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -192,11 +212,11 @@ class MainWindow(QMainWindow):
                                                 QMessageBox.Yes | QMessageBox.No)
                     if reply == QMessageBox.Yes:
                         cursor.execute(
-                            "UPDATE users SET time_out=?, picture=? WHERE name=? AND date=?",
-                            (time_out, picture_data, name, date)
+                            """UPDATE users SET name=?, address=?, phone=?, time_out=?, purpose=?, who=?, picture=?
+                            WHERE tag=? AND date=?""", 
+                            (name, address, phone, time_out, purpose, who, picture_data, tag, date)
                         )
                 else:
-                    normalized_tag = tag.rjust(3, '0') if tag else None
                     cursor.execute(
                         """INSERT INTO users (tag, name, address, phone, time_in, purpose, who, time_out, date, picture) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -271,6 +291,7 @@ class MainWindow(QMainWindow):
                         self.purpose.setText(str(record[5] or ""))
                         self.who_to_meet.setText(str(record[6] or ""))
                         self.timeout.setText(str(record[8] or ""))
+                        if not record[8]: self.ui.get_time_btn2.setEnabled(False)
                         self.date.setText(str(record[9] or ""))
                         if record[10]:
                             pixmap = QPixmap()
@@ -279,10 +300,11 @@ class MainWindow(QMainWindow):
                         else:
                             path = os.path.join(self.images_dir, "profile.jpg")
                             if os.path.exists(path):
-                                self.picture.setPixmap(
-                                    QPixmap(path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                                self.picture.setPixmap(QPixmap(path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
                     else:
                         QMessageBox.warning(dialog, "Not Found", f"No record found for tag: {tag}")
+                self.tag.setEnabled(False)
+                self.ui.change(1)
             except Exception as e:
                 QMessageBox.critical(dialog, "DB Error", f"Failed to load record:\n{e}")
             dialog.close()
@@ -291,6 +313,7 @@ class MainWindow(QMainWindow):
         dialog.exec_()
 
     def view(self):
+        self.check_admin()
         if self.admin:
             dialog = QMainWindow(self)
             dialog.setWindowTitle("View Logs")
@@ -299,9 +322,9 @@ class MainWindow(QMainWindow):
             menu = dialog.menuBar()
             file = menu.addMenu("File")
             export = file.addMenu("Export")
-            export.addAction("Export to csv").triggered.connect(lambda: exports(self, "csv"))
-            export.addAction("Export to html").triggered.connect(lambda: exports(self, "html"))
-            export.addAction("Export to pdf").triggered.connect(lambda: exports(self, "pdf"))
+            export.addAction("Export to csv").triggered.connect(lambda: run_threaded_export(self, "csv"))
+            export.addAction("Export to html").triggered.connect(lambda: run_threaded_export(self, "html"))
+            export.addAction("Export to pdf").triggered.connect(lambda: run_threaded_export(self, "pdf"))
 
             win = QWidget()
             vbox = QVBoxLayout()
@@ -390,12 +413,13 @@ class MainWindow(QMainWindow):
         elif text == "Clear Timeout":
             self.timeout.clear()
         elif text == "Sign In / Admin Manager":
-            # Sign in if not, else open admin manager
+            self.check_admin()
             if self.admin:
                 self.open_admin_manager()
             else:
                 self.settings()
         elif text == "Logout":
+            self.check_admin()
             if self.admin:
                 self.admin = False
                 QMessageBox.information(self, "Logged out", "You have logged out successfully.")
@@ -414,6 +438,7 @@ class MainWindow(QMainWindow):
             stack.setCurrentIndex(1)
             list_.setCurrentRow(1)
         elif a.text() == "Export":
+            self.check_admin()
             if True:
                 export = QDialog(self)
                 export.setWindowTitle("Export Data")
@@ -421,7 +446,7 @@ class MainWindow(QMainWindow):
                 hbox = QHBoxLayout()
                 for i in ["CSV", "HTML", "PDF"]:
                     btn = QPushButton(i)
-                    btn.clicked.connect(lambda e, val=i: exports(self, val.lower()))
+                    btn.clicked.connect(lambda e, val=i: run_threaded_export(self, val.lower()))
                     hbox.addWidget(btn)
                 hbox.setSpacing(10)
                 export.setLayout(hbox)
