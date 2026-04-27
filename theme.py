@@ -14,6 +14,7 @@ def set_light_theme(app):
             background-color:#0078d7;color:white;
             border-radius:8px;font-size:14px;padding:6px 10px;
         }
+        QPushButton:disabled{background-color:#949494;}
         QPushButton:hover{background-color:#005fa3;}
         QMenuBar, QMenu{background-color:#e9f2ff;color:#1E2832;font-size:13px}
         QMenuBar::item::selected, QMenu::item::selected{background-color:#e9e7df;color:#1E2912;}
@@ -43,6 +44,7 @@ def set_dark_theme(app):
             background-color:#0078d7;color:white;
             border-radius:8px;font-size:14px;padding:6px 10px;
         }
+        QPushButton:disabled{background-color:#949494;}
         QPushButton:hover{background-color:#005fa3;}
         QMenuBar, QMenu{background-color:#1E2832;color:#C8E1FA;font-size:15px}
         QMenuBar::item::selected, QMenu::item::selected{background-color:#1E2842;color:#C8E1EA}

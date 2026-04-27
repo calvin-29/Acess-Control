@@ -25,21 +25,21 @@ class Camera:
         self.open_camera_dialog(index)
 
     def open_camera_dialog(self, index=0):
-        self.app.config_data["camera"] = index
+        self.app.config_data["camera"] = index if index in self.available_cameras else 0
         self.app.save()
 
         self.cam_dialog = QDialog(self.app)
         self.cam_dialog.setWindowTitle("Camera - Snap Profile Photo")
-        self.cam_dialog.setFixedSize(520, 420)
+        self.cam_dialog.setMinimumSize(520, 420)
         layout = QVBoxLayout(self.cam_dialog)
 
         self.cam_label = QLabel()
-        self.cam_label.setFixedSize(500, 320)
+        self.cam_label.setMinimumSize(500, 320)
         self.cam_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.cam_label)
 
         btn_hbox = QHBoxLayout()
-        snap_icon = os.path.join(self.app.images_dir, "camera.svg")
+        snap_icon = self.app.get_resources("images", "camera.svg")
         snap_btn = QPushButton()
         snap_btn.setIconSize(QSize(24, 24))
         if os.path.exists(snap_icon):
@@ -55,7 +55,7 @@ class Camera:
         self.combo.setCurrentIndex(index)
         self.combo.currentIndexChanged[int].connect(self.change_camera)
 
-        cancel_icon = os.path.join(self.app.images_dir, "cancel.svg")
+        cancel_icon = self.app.get_resources("images", "cancel.svg")
         close_btn = QPushButton()
         close_btn.setIconSize(QSize(24, 24))
         if os.path.exists(cancel_icon):
@@ -68,6 +68,7 @@ class Camera:
         snap_btn.clicked.connect(self.take_snapshot)
         close_btn.clicked.connect(self.close_camera_dialog)
         self.cam_dialog.closeEvent = lambda a0: self.close_camera_dialog()
+        self.cam_dialog.finished.connect(self.close_camera_dialog)
 
         try:
             cam_index = int(self.combo.currentText()) if self.combo.count() > 0 else 0
@@ -114,7 +115,7 @@ class Camera:
 
         try:
             face_crop = cv2.resize(cv2.flip(frame, 1), (200, 200))
-            profile_path = os.path.join(self.app.images_dir, "temp.jpg")
+            profile_path = self.app.get_resources("images", "temp.jpg")
             cv2.imwrite(profile_path, face_crop)
 
             check = QDialog(self.app)
@@ -137,13 +138,13 @@ class Camera:
 
             hbox = QHBoxLayout()
 
-            good_icon = os.path.join(self.app.images_dir, "check.svg")
+            good_icon = self.app.get_resources("images", "check.svg")
             good = QPushButton(icon=QIcon(good_icon), text="")
             good.clicked.connect(accept)
             good.setToolTip("Accept")
             hbox.addWidget(good)
 
-            bad_icon = os.path.join(self.app.images_dir, "x.svg")
+            bad_icon = self.app.get_resources("images", "x.svg")
             bad = QPushButton(icon=QIcon(bad_icon), text="")
             bad.clicked.connect(reject)
             bad.setToolTip("Retake")

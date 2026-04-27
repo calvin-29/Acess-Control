@@ -5,16 +5,18 @@ from PyQt5.QtWidgets import (
 )
 import sqlite3
 import hashlib
+import bcrypt
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(hashlib.sha256(password.encode("utf-8")).hexdigest().encode("utf-8"), salt) 
 
 class AdminLogin(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
-        self.parent = parent
+        self.app = parent
         self.setWindowTitle("Admin Login")
-        self.setFixedSize(340, 200)
+        self.setMinimumSize(340, 180)
         layout = QFormLayout(self)
 
         self.username_input = QLineEdit()
@@ -44,14 +46,16 @@ class AdminLogin(QDialog):
             return
 
         try:
-            with sqlite3.connect(self.parent.db_path) as conn:
+            with self.app.get_resources("db", self.app.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT password FROM admins WHERE username=?", (username,))
                 row = cursor.fetchone()
-                if row and row[0] == hash_password(password):
-                    self.accept()
-                    return
-        except Exception as e:
+                if row:
+                    password_hash = hashlib.sha256(password.encode("utf-8")).hexdigest().encode("utf-8")
+                    if bcrypt.checkpw(password_hash, hash_password(password)):
+                        self.accept()
+                        return
+        except sqlite3.Error as e:
             QMessageBox.critical(self, "DB Error", f"Failed to verify credentials:\n{e}")
             return
 
@@ -60,7 +64,7 @@ class AdminLogin(QDialog):
 class AdminManager(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
-        self.parent = parent
+        self.app = parent
         self.setWindowTitle("Manage Admins")
         self.resize(420, 300)
         layout = QVBoxLayout(self)
@@ -87,12 +91,12 @@ class AdminManager(QDialog):
     def load_admins(self):
         self.list_widget.clear()
         try:
-            with sqlite3.connect(self.parent.db_path) as conn:
+            with self.app.get_resources("db", self.app.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT id, username FROM admins ORDER BY username")
                 for aid, username in cursor.fetchall():
                     self.list_widget.addItem(f"{aid}: {username}")
-        except Exception as e:
+        except sqlite3.Error as e:
             QMessageBox.critical(self, "Error", f"Failed to load admins:\n{e}")
 
     def add_admin(self):
@@ -103,7 +107,7 @@ class AdminManager(QDialog):
         if not ok or not password:
             return
         try:
-            with sqlite3.connect(self.parent.db_path) as conn:
+            with self.app.get_resources("db", self.app.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO admins (username, password) VALUES (?, ?)",
                             (username.strip(), hash_password(password)))
@@ -112,7 +116,7 @@ class AdminManager(QDialog):
             self.load_admins()
         except sqlite3.IntegrityError:
             QMessageBox.warning(self, "Duplicate", "An admin with that username already exists.")
-        except Exception as e:
+        except sqlite3.Error as e:
             QMessageBox.critical(self, "Error", f"Failed to add admin:\n{e}")
 
     def delete_selected(self):
@@ -126,12 +130,12 @@ class AdminManager(QDialog):
                                     QMessageBox.Yes | QMessageBox.No)
         if confirm == QMessageBox.Yes:
             try:
-                with sqlite3.connect(self.parent.db_path) as conn:
+                with self.app.get_resources("db", self.app.db_path) as conn:
                     cursor = conn.cursor()
                     cursor.execute("DELETE FROM admins WHERE id=?", (aid,))
                     conn.commit()
                 QMessageBox.information(self, "Deleted", "Admin removed.")
                 self.load_admins()
-            except Exception as e:
+            except sqlite3.Error as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete admin:\n{e}")
 

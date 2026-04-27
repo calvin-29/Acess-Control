@@ -18,12 +18,25 @@ class UI():
         self.app = app
         self.available_cameras = available_cameras
 
-    def form(self):
-        self.form_frame = QFrame()
-        self.form_frame.setObjectName("form_frame")
+    def form(self, timeout=False):
+        if not hasattr(self, "form_frame"):
+            self.form_frame = QFrame()
+            self.form_frame.setObjectName("form_frame")
 
-        form = QFormLayout()
-        form.setSpacing(10)
+            self.form_lay = QFormLayout()
+            self.form_lay.setSpacing(10)
+
+            self.form_frame.setLayout(self.form_lay)
+        else:
+            self.clear_layout(self.form_lay)
+        
+        self.picture_hbox = QHBoxLayout()
+        self.time_out_hbox = QHBoxLayout()
+        self.date_hbox = QHBoxLayout()
+        self.form_hbox = QHBoxLayout()
+        
+        self.first_col = QFormLayout()
+        self.second_col = QFormLayout()
 
         self.app.tag = QLineEdit()
         self.app.name = QLineEdit()
@@ -53,62 +66,58 @@ class UI():
         self.app.timeout.setReadOnly(True)
         self.app.date.setReadOnly(True)
 
-        picture_hbox = QHBoxLayout()
-        picture_hbox.setAlignment(Qt.AlignCenter)
-        profile_path = os.path.join(self.app.images_dir, "profile.jpg")
+        self.picture_hbox.setAlignment(Qt.AlignCenter)
+        profile_path = self.app.get_resources("images", "profile.jpg")
         if os.path.exists(profile_path):
             self.app.picture.setPixmap(QPixmap(profile_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        picture_hbox.addWidget(self.app.picture)
+        self.picture_hbox.addWidget(self.app.picture)
 
-        icon_path = os.path.join(self.app.images_dir, "camera.svg")
+        icon_path = self.app.get_resources("images", "camera.svg")
         change_btn = QPushButton(" Change Photo")
         if os.path.exists(icon_path):
             change_btn.setIcon(QIcon(QPixmap(icon_path).scaled(32, 32)))
         camera = self.app.config_data["camera"]
         change_btn.clicked.connect(lambda: self.app.camera.open_camera_dialog(camera if camera in self.available_cameras else 0))
-        picture_hbox.addWidget(change_btn)
+        self.picture_hbox.addWidget(change_btn)
 
-        time_out_hbox = QHBoxLayout()
-        time_out_hbox.addWidget(self.app.timeout)
-        time_out_hbox.addWidget(self.get_time_btn2)
+        if timeout:
+            self.time_out_hbox.addWidget(self.app.timeout)
+            self.time_out_hbox.addWidget(self.get_time_btn2)
 
-        date_hbox = QHBoxLayout()
-        date_hbox.addWidget(self.app.date)
-        date_hbox.addWidget(self.date_btn)
-
-        form.addRow(picture_hbox)
-        form_hbox = QHBoxLayout()
-
-        form.addRow(QLabel(""))
+        self.date_hbox.addWidget(self.app.date)
+        self.date_hbox.addWidget(self.date_btn)
+            
+        self.form_lay.addRow(self.picture_hbox)
 
         # ---first column---
-        first_col = QFormLayout()
-        first_col.addRow("Tag:", self.app.tag)
-        first_col.addRow("Name:", self.app.name)
-        first_col.addRow("Address:", self.app.address)
+        self.first_col.addRow("Tag:", self.app.tag)
+        self.first_col.addRow("Name:", self.app.name)
+        self.first_col.addRow("Address:", self.app.address)
 
         # -----second column-----
-        second_col = QFormLayout()
-        second_col.addRow("Phone number:", self.app.phone)
-        second_col.addRow("Time out:", time_out_hbox)
-        second_col.addRow("Date:", date_hbox)
+        self.second_col.addRow("Phone number:", self.app.phone)
+        if timeout:
+            self.second_col.addRow("Time out:", self.time_out_hbox)
+        else:
+            self.second_col.addRow("Who to meet:", self.app.who_to_meet)
+        self.second_col.addRow("Date:", self.date_hbox)
 
-        form_hbox.addLayout(first_col)
-        form_hbox.addSpacing(50)
-        form_hbox.addLayout(second_col)
+        self.form_hbox.addLayout(self.first_col)
+        self.form_hbox.addSpacing(50)
+        self.form_hbox.addLayout(self.second_col)
 
-        form.addRow(form_hbox)
-        form.addRow("Who to meet:", self.app.who_to_meet)
-        form.addRow("Purpose:", self.app.purpose)
+        self.form_lay.addRow(self.form_hbox)
+        if timeout:
+            self.form_lay.addRow("Who to meet:", self.app.who_to_meet)
+        self.form_lay.addRow("Purpose:", self.app.purpose)
 
         btn = QPushButton("Submit")
         btn.clicked.connect(self.app.save_record)
-        btn.setFont(QFont("Segeo UI", 13, QFont.Bold))
+        btn.setFont(QFont("Segeo UI", 16, QFont.Bold))
 
         btn.setFixedWidth(300)
-        form.addRow(btn)
+        self.form_lay.addRow(btn)
 
-        self.form_frame.setLayout(form)
         return self.form_frame
 
     def change(self, num):
@@ -130,52 +139,72 @@ class UI():
             self.scroll_area = QScrollArea()
             self.scroll_area.setWidgetResizable(True)
             self.scroll_area.setObjectName("form_frame")
+            
             self.stack_frame = QFrame()
             self.stack_frame.setObjectName("form_frame")
+
             self.vbox = QVBoxLayout(self.stack_frame)
+
+            lb = QLabel()
+            lb.setStyleSheet("font-weight: 500;font-size: 25px")
+            self.vbox.addWidget(lb, alignment=Qt.AlignCenter)
+
+
+            self.search_hbox = QFormLayout()
+            self.vbox.addLayout(self.search_hbox)
+
             self.list_of_visitors = QGridLayout()
+            self.vbox.addLayout(self.list_of_visitors)
         else:
            self.clear_layout(self.vbox)
-        
-        lb = QLabel()
-        lb.setStyleSheet("font-weight: 500;font-size: 25px")
-        self.vbox.addWidget(lb, alignment=Qt.AlignCenter)
 
-        with sqlite3.connect(self.app.db_path) as db:
-            cursor = db.cursor()
-            current_date = datetime.datetime.now().strftime("%d/%m/%Y")
-            conn = cursor.execute("SELECT id, picture, tag, name, address, phone, time_out FROM users WHERE date = ?", (current_date,))
-            info = conn.fetchall()
-            if info:
-                lb.setText("Visitors Today")
-                for count, i in enumerate(["No", "Picture", "Tag", "Name", "Address", "Phone", "Status"]):
-                    lbl = QLabel(text=i, alignment=Qt.AlignCenter)
-                    lbl.setStyleSheet("font-weight: 500;border: 1px solid white;")
-                    self.list_of_visitors.addWidget(lbl, 0, count, alignment=Qt.AlignTop)
-                
-                for row, j in enumerate(info, start=1):
-                    for col, k  in enumerate(j):
-                        lbl = QLabel(text=str(k), alignment=Qt.AlignCenter)
-                        if col==6:
-                            lbl.setText("Active" if j[6] else "Not Active")
-                        if col==1:
-                            pix = QPixmap()
-                            if k:
-                                pix.loadFromData(k)
-                            else:
-                                pix = QPixmap(os.path.join(self.app.images_dir, "profile.jpg"))
-                            pix = pix.scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                            lbl.setPixmap(pix)
-                        self.list_of_visitors.addWidget(lbl, row, col, alignment=Qt.AlignCenter)
-                self.vbox.addLayout(self.list_of_visitors)
-            else:                    
-                lb.setText("No Visitors Today")
-                btn = QPushButton("Register")
-                btn.setFixedWidth(200)
-                btn.clicked.connect(lambda: self.change(1))
-                self.vbox.addWidget(btn, alignment=Qt.AlignCenter)
-                self.vbox.setAlignment(Qt.AlignTop)
+        self.search_box = QLineEdit()
+        self.search_hbox.addRow("Search: ", self.search_box)
+
+        def filter_log():
+            filter_text = self.search_box.text().strip().lower()    
+
+            self.clear_layout(self.list_of_visitors)
+            with self.app.get_resources("db", self.app.db_path) as db:
+                cursor = db.cursor()
+                current_date = datetime.datetime.now().strftime("%d/%m/%Y")
+                conn = cursor.execute("SELECT id, picture, tag, name, address, phone, time_out FROM users WHERE date = ?", (current_date,))
+                info = conn.fetchall()
+                if info:
+                    lb.setText("Visitors Today")
+                    for count, i in enumerate(["No", "Picture", "Tag", "Name", "Address", "Phone", "Status"]):
+                        lbl = QLabel(text=i, alignment=Qt.AlignCenter)
+                        lbl.setStyleSheet("font-weight: 500;border: 1px solid white;")
+                        self.list_of_visitors.addWidget(lbl, 0, count, alignment=Qt.AlignTop)
+                    
+                    for row, j in enumerate(info, start=1):
+                        if filter_text in j:
+                            for col, k  in enumerate(j):
+                                lbl = QLabel(text=str(k), alignment=Qt.AlignCenter)
+                                if col==6:
+                                    lbl.setText("Active" if j[6] else "Not Active")
+                                if col==1:
+                                    pix = QPixmap()
+                                    if k:
+                                        pix.loadFromData(k)
+                                    else:
+                                        pix = QPixmap(self.app.get_resources("images", "profile.jpg"))
+                                    pix = pix.scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                                    lbl.setPixmap(pix)
+                                self.list_of_visitors.addWidget(lbl, row, col, alignment=Qt.AlignCenter)
+                        else:
+                            pass
+                else:                    
+                    lb.setText("No Visitors Today")
+                    btn = QPushButton("Register")
+                    btn.setFixedWidth(200)
+                    btn.clicked.connect(lambda: self.change(1))
+                    self.vbox.addWidget(btn, alignment=Qt.AlignCenter)
+                    self.vbox.setAlignment(Qt.AlignTop)
         
+        filter_log()
+        self.search_box.textChanged.connect(filter_log)
+
         self.change(0)
         self.vbox.addStretch(1)
         self.scroll_area.setWidget(self.stack_frame)
@@ -191,7 +220,7 @@ class UI():
         self.app.title = QLabel("Visitor Log")
         self.app.title.setFont(QFont("Segoe UI", 30, QFont.Bold))
         logo = QLabel()
-        logo_path = os.path.join(self.app.images_dir, "logo.png")
+        logo_path = self.app.get_resources("images", "logo.png")
         if os.path.exists(logo_path):
             pixmap = QPixmap(logo_path).scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             logo.setPixmap(pixmap)
@@ -207,6 +236,8 @@ class UI():
         save.setShortcut("Ctrl+S")
         load = QAction("Load Record", self.app)
         load.setShortcut("Ctrl+L")
+        new = QAction("New Record", self.app)
+        new.setShortcut("Ctrl+N")
         toggle = QAction("Toggle Theme", self.app)
         toggle.setShortcut("Ctrl+T")
         view = QAction("View Table", self.app)
@@ -216,6 +247,7 @@ class UI():
 
         file.addAction(save)
         file.addAction(load)
+        file.addAction(new)
         file.addAction(toggle)
         file.addAction(view)
         file.addSeparator()
@@ -224,9 +256,8 @@ class UI():
         file.triggered.connect(self.app.menu_commands)
 
         edit = menu.addMenu("Edit")
-        edit.addAction("Clear All")
+        edit.addAction("Reset All")
         edit.addAction("Clear Date")
-        edit.addAction("Clear Timeout")
         edit.triggered.connect(self.app.menu_commands)
 
         # toolbar for quick access to commands
@@ -240,35 +271,35 @@ class UI():
             return space
 
         tb.addWidget(give_space())
-        save_icon = os.path.join(self.app.images_dir, "save.svg")
+        save_icon = self.app.get_resources("images", "save.svg")
         save = QAction("Save", self.app)
         if os.path.exists(save_icon):
             save.setIcon(QIcon(save_icon))
         tb.addAction(save)
 
         tb.addWidget(give_space())
-        load_icon = os.path.join(self.app.images_dir, "folder-open.svg")
+        load_icon = self.app.get_resources("images", "folder-open.svg")
         load = QAction("Load", self.app)
         if os.path.exists(load_icon):
             load.setIcon(QIcon(load_icon))
         tb.addAction(load)
 
         tb.addWidget(give_space())
-        register_icon = os.path.join(self.app.images_dir, "cash-register.svg")
+        register_icon = self.app.get_resources("images", "cash-register.svg")
         reg = QAction("Register", self.app)
         if os.path.exists(register_icon):
             reg.setIcon(QIcon(register_icon))
         tb.addAction(reg)
         
         tb.addWidget(give_space())
-        export_icon = os.path.join(self.app.images_dir, "file-export.svg")
+        export_icon = self.app.get_resources("images", "file-export.svg")
         export = QAction("Export", self.app)
         if os.path.exists(export_icon):
             export.setIcon(QIcon(export_icon))
         tb.addAction(export)
 
         tb.addWidget(give_space())
-        sign_icon = os.path.join(self.app.images_dir, "user-circle.svg")
+        sign_icon = self.app.get_resources("images", "user-circle.svg")
         sign = QAction("Sign In", self.app)
         if os.path.exists(sign_icon):
             sign.setIcon(QIcon(sign_icon))
@@ -282,7 +313,7 @@ class UI():
         self.windows.setFixedWidth(200)
 
         for count, (i, j) in enumerate((("Dashboard", "bar-chart.svg"), ("Form", "file-alt.svg"))):
-            img = os.path.join(self.app.images_dir, j)
+            img = self.app.get_resources("images", j)
             item = QListWidgetItem(i)
             if os.path.exists(img):
                 item.setIcon(QIcon(QPixmap(img).scaled(32, 32)))
@@ -291,7 +322,7 @@ class UI():
         # stacked widget for the form and the dashboard
         self.stack = QStackedWidget()
         self.stack.addWidget(self.dashboard())
-        self.stack.addWidget(self.form())
+        self.stack.addWidget(self.form(False))
         
         self.windows.currentRowChanged.connect(lambda e: self.stack.setCurrentIndex(e))
         self.windows.itemClicked.connect(lambda e: self.stack.setCurrentIndex(0 if e.text() == "Dashboard" else 1))

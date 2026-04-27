@@ -14,7 +14,8 @@ import base64
 import sys
 import csv
 
-file_path = ""
+def get_file_path(type_of):
+    return os.path.join(os.path.expanduser("~"), "Documents", f"access_records.{type_of}")
 
 class ExportWorker(QObject):
     finished = pyqtSignal()
@@ -24,17 +25,18 @@ class ExportWorker(QObject):
         super().__init__()
         self.main_window = main_window
         self.export_type = export_type
+        self.file_path = get_file_path(self.export_type)
 
     def run(self):
         try:
             export_file(self.main_window, self.export_type)
             self.finished.emit()
         except Exception as e:
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            if os.path.exists(self.file_path):
+                os.remove(self.file_path)
             self.error.emit(str(e))
 
-def finish(app):
+def finish(app, file_path):
     msgbox = QMessageBox(app)
     msgbox.setWindowTitle("File saved successfully")
     msgbox.setText(f"File is saved at {file_path}")
@@ -67,19 +69,18 @@ def run_threaded_export(app, export_type):
     app.export_thread.finished.connect(app.export_thread.deleteLater)
     
     app.worker.finished.connect(lambda: app.statusBar().showMessage("Export Complete!", 3000))
-    app.worker.finished.connect(lambda: finish(app))
+    app.worker.finished.connect(lambda: finish(app, get_file_path(export_type)))
     app.worker.error.connect(lambda err: QMessageBox.critical(app, "Export Error", err))
 
     app.export_thread.start()
     app.statusBar().showMessage(f"Exporting to {export_type.upper()}... Please wait.")
 
 def export_file(app, type_of):
-    global file_path
+    file_path = get_file_path(type_of)
 
     QApplication.setOverrideCursor(Qt.WaitCursor)
-    file_path = os.path.join(os.path.expanduser("~"), "Documents", f"access_records.{type_of}")
-    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "logo.png")
-    default_pic_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "profile.jpg")
+    logo_path = app.get_resources("images", "logo.png")
+    default_pic_path = app.get_resources("images", "profile.jpg")
 
     logo_content = ""
     with open(logo_path, "rb") as f:
@@ -89,14 +90,10 @@ def export_file(app, type_of):
     with open(default_pic_path, "rb") as f:
         default_pic_content = f.read()
 
-    try:
-        with sqlite3.connect(app.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT tag, name, address, phone, purpose, who, time_in, time_out, date, picture FROM users")
-            info = cursor.fetchall()
-    except Exception as e:
-        QMessageBox.critical(app, "Export Error", f"Failed to read records:\n{e}")
-        return
+    with app.get_resources("db", app.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT tag, name, address, phone, purpose, who, time_in, time_out, date, picture FROM users")
+        info = cursor.fetchall()
     
     if type_of == "csv":
         with open(file_path, "w", encoding="utf-8", newline='') as e:
